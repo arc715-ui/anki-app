@@ -10,7 +10,7 @@ export async function signInWithGoogle() {
   const { data, error } = await supabase.auth.signInWithOAuth({
     provider: 'google',
     options: {
-      redirectTo: window.location.origin,
+      redirectTo: 'https://arc715-ui.github.io/anki-app/',
     },
   });
   return { data, error };
