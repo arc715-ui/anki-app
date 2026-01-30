@@ -1,18 +1,117 @@
-import { useState } from 'react';
+import { useState, useEffect } from 'react';
 import { useStore } from './stores/useStore';
+import { useAuth } from './stores/useAuth';
 import { DeckList } from './components/DeckList';
 import { StudySession } from './components/StudySession';
 import { CardEditor } from './components/CardEditor';
 import { ImportExam } from './components/ImportExam';
+import { AuthButton } from './components/AuthButton';
+import { fetchAllFromRemote, syncToRemote } from './lib/syncService';
 import type { Deck } from './types';
 import './index.css';
 
 type View = 'home' | 'study' | 'edit' | 'import';
 
 function App() {
-  const { streak, getTodayStats, cards, getDueCardsForDeck } = useStore();
+  const { user, initialize } = useAuth();
+  const store = useStore();
+  const { streak, getTodayStats, cards, getDueCardsForDeck, decks, sessions, lastStudyDate } = store;
+
   const [view, setView] = useState<View>('home');
   const [selectedDeck, setSelectedDeck] = useState<Deck | null>(null);
+  const [syncing, setSyncing] = useState(false);
+  const [syncStatus, setSyncStatus] = useState<string | null>(null);
+
+  // Initialize auth on mount
+  useEffect(() => {
+    initialize();
+  }, [initialize]);
+
+  // Sync with Supabase when user logs in
+  useEffect(() => {
+    if (!user) return;
+
+    const doSync = async () => {
+      setSyncing(true);
+      setSyncStatus('同期中...');
+
+      try {
+        // Fetch remote data
+        const remoteData = await fetchAllFromRemote(user.id);
+
+        // If remote has data, merge it
+        if (remoteData.decks.length > 0 || remoteData.cards.length > 0) {
+          // Merge remote data with local (remote takes priority for now)
+          useStore.setState({
+            decks: mergeById(decks, remoteData.decks),
+            cards: mergeById(cards, remoteData.cards),
+            sessions: mergeById(sessions, remoteData.sessions),
+            streak: remoteData.streak || streak,
+            lastStudyDate: remoteData.lastStudyDate || lastStudyDate,
+          });
+        }
+
+        // Push local data to remote
+        const currentState = useStore.getState();
+        await syncToRemote(
+          user.id,
+          currentState.decks,
+          currentState.cards,
+          currentState.sessions,
+          currentState.streak,
+          currentState.lastStudyDate
+        );
+
+        setSyncStatus('同期完了 ✓');
+        setTimeout(() => setSyncStatus(null), 2000);
+      } catch (error) {
+        console.error('Sync error:', error);
+        setSyncStatus('同期エラー');
+        setTimeout(() => setSyncStatus(null), 3000);
+      } finally {
+        setSyncing(false);
+      }
+    };
+
+    doSync();
+  }, [user?.id]);
+
+  // Helper to merge arrays by id, preferring items with later updatedAt
+  function mergeById<T extends { id: string; updatedAt?: string }>(local: T[], remote: T[]): T[] {
+    const map = new Map<string, T>();
+
+    for (const item of local) {
+      map.set(item.id, item);
+    }
+
+    for (const item of remote) {
+      const existing = map.get(item.id);
+      if (!existing) {
+        map.set(item.id, item);
+      } else if (item.updatedAt && existing.updatedAt && item.updatedAt > existing.updatedAt) {
+        map.set(item.id, item);
+      } else if (!existing.updatedAt && item.updatedAt) {
+        map.set(item.id, item);
+      }
+    }
+
+    return Array.from(map.values());
+  }
+
+  // Sync changes to remote whenever data changes (debounced)
+  useEffect(() => {
+    if (!user) return;
+
+    const timeoutId = setTimeout(async () => {
+      try {
+        await syncToRemote(user.id, decks, cards, sessions, streak, lastStudyDate);
+      } catch (error) {
+        console.error('Background sync error:', error);
+      }
+    }, 2000);
+
+    return () => clearTimeout(timeoutId);
+  }, [user?.id, decks, cards, sessions, streak, lastStudyDate]);
 
   const todayStats = getTodayStats();
   const totalDueCards = cards.filter(c => new Date(c.nextReview) <= new Date()).length;
@@ -64,7 +163,14 @@ function App() {
     <div className="app">
       <header className="header">
         <h1 className="header__title">📚 暗記カード</h1>
+        {syncStatus && (
+          <div className={`sync-status ${syncing ? 'syncing' : ''}`}>
+            {syncStatus}
+          </div>
+        )}
       </header>
+
+      <AuthButton />
 
       <div className="stats-banner">
         <div className="stat-card stat-card--streak">

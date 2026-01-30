@@ -1,0 +1,271 @@
+import { supabase } from './supabase';
+import type { Card, Deck, StudySession } from '../types';
+
+
+
+// Helper to convert snake_case to camelCase
+function toCamelCase(obj: Record<string, unknown>): Record<string, unknown> {
+  const result: Record<string, unknown> = {};
+  for (const key in obj) {
+    const camelKey = key.replace(/_([a-z])/g, (_, letter) => letter.toUpperCase());
+    result[camelKey] = obj[key];
+  }
+  return result;
+}
+
+// ============ DECKS ============
+
+export async function fetchDecks(userId: string): Promise<Deck[]> {
+  const { data, error } = await supabase
+    .from('decks')
+    .select('*')
+    .eq('user_id', userId)
+    .order('created_at', { ascending: false });
+
+  if (error) {
+    console.error('Error fetching decks:', error);
+    return [];
+  }
+
+  return (data || []).map(d => toCamelCase(d) as unknown as Deck);
+}
+
+export async function upsertDeck(userId: string, deck: Deck): Promise<void> {
+  const { error } = await supabase
+    .from('decks')
+    .upsert({
+      id: deck.id,
+      user_id: userId,
+      name: deck.name,
+      description: deck.description,
+      color: deck.color,
+      created_at: deck.createdAt,
+    });
+
+  if (error) {
+    console.error('Error upserting deck:', error);
+  }
+}
+
+export async function deleteDeckRemote(deckId: string): Promise<void> {
+  const { error } = await supabase
+    .from('decks')
+    .delete()
+    .eq('id', deckId);
+
+  if (error) {
+    console.error('Error deleting deck:', error);
+  }
+}
+
+// ============ CARDS ============
+
+export async function fetchCards(userId: string): Promise<Card[]> {
+  const { data, error } = await supabase
+    .from('cards')
+    .select('*')
+    .eq('user_id', userId);
+
+  if (error) {
+    console.error('Error fetching cards:', error);
+    return [];
+  }
+
+  return (data || []).map(c => ({
+    id: c.id,
+    deckId: c.deck_id,
+    type: c.type,
+    front: c.front,
+    back: c.back,
+    correctAnswer: c.correct_answer,
+    options: c.options,
+    interval: c.interval,
+    repetition: c.repetition,
+    easeFactor: c.ease_factor,
+    nextReview: c.next_review,
+    createdAt: c.created_at,
+    updatedAt: c.updated_at,
+  })) as Card[];
+}
+
+export async function upsertCard(userId: string, card: Card): Promise<void> {
+  const { error } = await supabase
+    .from('cards')
+    .upsert({
+      id: card.id,
+      user_id: userId,
+      deck_id: card.deckId,
+      type: card.type,
+      front: card.front,
+      back: card.back,
+      correct_answer: card.correctAnswer,
+      options: card.options,
+      interval: card.interval,
+      repetition: card.repetition,
+      ease_factor: card.easeFactor,
+      next_review: card.nextReview,
+      created_at: card.createdAt,
+      updated_at: card.updatedAt,
+    });
+
+  if (error) {
+    console.error('Error upserting card:', error);
+  }
+}
+
+export async function upsertCards(userId: string, cards: Card[]): Promise<void> {
+  if (cards.length === 0) return;
+
+  const { error } = await supabase
+    .from('cards')
+    .upsert(cards.map(card => ({
+      id: card.id,
+      user_id: userId,
+      deck_id: card.deckId,
+      type: card.type,
+      front: card.front,
+      back: card.back,
+      correct_answer: card.correctAnswer,
+      options: card.options,
+      interval: card.interval,
+      repetition: card.repetition,
+      ease_factor: card.easeFactor,
+      next_review: card.nextReview,
+      created_at: card.createdAt,
+      updated_at: card.updatedAt,
+    })));
+
+  if (error) {
+    console.error('Error upserting cards:', error);
+  }
+}
+
+export async function deleteCardRemote(cardId: string): Promise<void> {
+  const { error } = await supabase
+    .from('cards')
+    .delete()
+    .eq('id', cardId);
+
+  if (error) {
+    console.error('Error deleting card:', error);
+  }
+}
+
+// ============ STUDY SESSIONS ============
+
+export async function fetchStudySessions(userId: string): Promise<StudySession[]> {
+  const { data, error } = await supabase
+    .from('study_sessions')
+    .select('*')
+    .eq('user_id', userId);
+
+  if (error) {
+    console.error('Error fetching study sessions:', error);
+    return [];
+  }
+
+  return (data || []).map(s => ({
+    id: s.id,
+    deckId: s.deck_id,
+    cardsStudied: s.cards_studied,
+    correctCount: s.correct_count,
+    date: s.date,
+  })) as StudySession[];
+}
+
+export async function upsertStudySession(userId: string, session: StudySession): Promise<void> {
+  const { error } = await supabase
+    .from('study_sessions')
+    .upsert({
+      id: session.id,
+      user_id: userId,
+      deck_id: session.deckId,
+      cards_studied: session.cardsStudied,
+      correct_count: session.correctCount,
+      date: session.date,
+    });
+
+  if (error) {
+    console.error('Error upserting study session:', error);
+  }
+}
+
+// ============ USER SETTINGS ============
+
+export async function fetchUserSettings(userId: string): Promise<{ streak: number; lastStudyDate: string | null } | null> {
+  const { data, error } = await supabase
+    .from('user_settings')
+    .select('*')
+    .eq('user_id', userId)
+    .single();
+
+  if (error) {
+    if (error.code === 'PGRST116') {
+      // No row found, create one
+      return null;
+    }
+    console.error('Error fetching user settings:', error);
+    return null;
+  }
+
+  return {
+    streak: data.streak,
+    lastStudyDate: data.last_study_date,
+  };
+}
+
+export async function upsertUserSettings(userId: string, streak: number, lastStudyDate: string | null): Promise<void> {
+  const { error } = await supabase
+    .from('user_settings')
+    .upsert({
+      user_id: userId,
+      streak,
+      last_study_date: lastStudyDate,
+    });
+
+  if (error) {
+    console.error('Error upserting user settings:', error);
+  }
+}
+
+// ============ FULL SYNC ============
+
+export async function syncToRemote(
+  userId: string,
+  decks: Deck[],
+  cards: Card[],
+  sessions: StudySession[],
+  streak: number,
+  lastStudyDate: string | null
+): Promise<void> {
+  // Sync all data to Supabase
+  await Promise.all([
+    ...decks.map(deck => upsertDeck(userId, deck)),
+    upsertCards(userId, cards),
+    ...sessions.map(session => upsertStudySession(userId, session)),
+    upsertUserSettings(userId, streak, lastStudyDate),
+  ]);
+}
+
+export async function fetchAllFromRemote(userId: string): Promise<{
+  decks: Deck[];
+  cards: Card[];
+  sessions: StudySession[];
+  streak: number;
+  lastStudyDate: string | null;
+}> {
+  const [decks, cards, sessions, settings] = await Promise.all([
+    fetchDecks(userId),
+    fetchCards(userId),
+    fetchStudySessions(userId),
+    fetchUserSettings(userId),
+  ]);
+
+  return {
+    decks,
+    cards,
+    sessions,
+    streak: settings?.streak ?? 0,
+    lastStudyDate: settings?.lastStudyDate ?? null,
+  };
+}
