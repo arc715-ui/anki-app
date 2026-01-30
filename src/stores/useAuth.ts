@@ -59,7 +59,7 @@ export const useAuth = create<AuthState>((set, get) => ({
     const { error } = await supabase.auth.signInWithOAuth({
       provider: 'google',
       options: {
-        redirectTo: window.location.origin,
+        redirectTo: 'https://arc715-ui.github.io/anki-app/',
       },
     });
     if (error) {
