@@ -131,6 +131,11 @@ function App() {
     setSelectedDeck(null);
   };
 
+  const handleImport = (deck: Deck) => {
+    setSelectedDeck(deck);
+    setView('import');
+  };
+
   if (view === 'study' && selectedDeck) {
     return (
       <div className="app">
@@ -191,7 +196,7 @@ function App() {
         </div>
       </div>
 
-      <DeckList onSelectDeck={handleSelectDeck} />
+      <DeckList onSelectDeck={handleSelectDeck} onImport={handleImport} />
 
       <nav className="nav-bar">
         <button className="nav-bar__item nav-bar__item--active">

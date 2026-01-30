@@ -6,9 +6,10 @@ const DECK_COLORS = ['#6366f1', '#8b5cf6', '#ec4899', '#ef4444', '#f59e0b', '#10
 
 interface DeckListProps {
   onSelectDeck: (deck: Deck) => void;
+  onImport?: (deck: Deck) => void;
 }
 
-export function DeckList({ onSelectDeck }: DeckListProps) {
+export function DeckList({ onSelectDeck, onImport }: DeckListProps) {
   const { decks, cards, addDeck, deleteDeck, getDueCardsForDeck } = useStore();
   const [showModal, setShowModal] = useState(false);
   const [newDeck, setNewDeck] = useState({ name: '', description: '', color: DECK_COLORS[0] });
@@ -54,6 +55,9 @@ export function DeckList({ onSelectDeck }: DeckListProps) {
                 <div className="deck-card__stats">
                   <span>📇 {deckCards.length} 枚</span>
                   <span>✅ {masteredCount} 習得</span>
+                  {onImport && (
+                    <button className="card-list__action card-list__action--import" onClick={(e) => { e.stopPropagation(); onImport(deck); }} title="インポート">📥</button>
+                  )}
                   <button className="card-list__action card-list__action--delete" onClick={(e) => handleDeleteDeck(e, deck.id)} title="削除">🗑️</button>
                 </div>
               </div>
