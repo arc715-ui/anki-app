@@ -6,6 +6,7 @@ import { v4 as uuidv4 } from 'uuid';
 interface CardEditorProps {
   deckId: string;
   onBack: () => void;
+  onGoToImport?: () => void;
 }
 
 const CARD_TYPE_LABELS: Record<CardType, string> = {
@@ -14,7 +15,7 @@ const CARD_TYPE_LABELS: Record<CardType, string> = {
   multiple_choice: '多肢選択',
 };
 
-export function CardEditor({ deckId, onBack }: CardEditorProps) {
+export function CardEditor({ deckId, onBack, onGoToImport }: CardEditorProps) {
   const { decks, getCardsForDeck, addCard, updateCard, deleteCard, importCards } = useStore();
 
   const deck = decks.find((d) => d.id === deckId);
@@ -152,7 +153,7 @@ export function CardEditor({ deckId, onBack }: CardEditorProps) {
       <div className="card-list">
         <div style={{ display: 'flex', gap: 'var(--spacing-sm)', marginBottom: 'var(--spacing-lg)' }}>
           <button className="btn btn--primary" onClick={() => setShowAddModal(true)}>➕ カード追加</button>
-          <button className="btn btn--secondary" onClick={() => setShowImportModal(true)}>📥 インポート</button>
+          <button className="btn btn--secondary" onClick={() => onGoToImport ? onGoToImport() : setShowImportModal(true)}>📥 インポート</button>
         </div>
 
         {cards.length === 0 ? (

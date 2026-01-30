@@ -151,7 +151,7 @@ function App() {
   if (view === 'edit' && selectedDeck) {
     return (
       <div className="app">
-        <CardEditor deckId={selectedDeck.id} onBack={handleBack} />
+        <CardEditor deckId={selectedDeck.id} onBack={handleBack} onGoToImport={() => setView('import')} />
       </div>
     );
   }
