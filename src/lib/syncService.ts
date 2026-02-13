@@ -167,6 +167,34 @@ export async function deleteCardRemote(cardId: string): Promise<void> {
   }
 }
 
+// ============ CARD REVIEWS (個別回答履歴) ============
+
+export async function insertCardReview(
+  card: Card,
+  quality: number
+): Promise<void> {
+  const { data: { session } } = await supabase.auth.getSession();
+  if (!session?.user?.id) return;
+
+  const { error } = await supabase
+    .from('card_reviews')
+    .insert({
+      user_id: session.user.id,
+      card_id: card.id,
+      deck_id: card.deckId,
+      quality,
+      ease_factor_before: card.easeFactor,
+      interval_before: card.interval,
+      repetition_before: card.repetition,
+      subject: card.subject || null,
+      sub_category: card.subCategory || null,
+    });
+
+  if (error) {
+    console.error('Error inserting card review:', error);
+  }
+}
+
 // ============ STUDY SESSIONS ============
 
 export async function fetchStudySessions(userId: string): Promise<StudySession[]> {

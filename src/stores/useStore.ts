@@ -142,6 +142,14 @@ export const useStore = create<AppState>()(
       },
 
       reviewCardAction: (cardId, quality) => {
+        // 回答履歴を記録（更新前のカード状態をスナップショット）
+        const cardBeforeReview = get().cards.find(c => c.id === cardId);
+        if (cardBeforeReview) {
+          import('../lib/syncService').then(({ insertCardReview }) => {
+            insertCardReview(cardBeforeReview, quality);
+          });
+        }
+
         set((state) => ({
           cards: state.cards.map((card) =>
             card.id === cardId ? reviewCard(card, quality) : card
