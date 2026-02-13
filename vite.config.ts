@@ -10,6 +10,9 @@ export default defineConfig({
     VitePWA({
       registerType: 'autoUpdate',
       includeAssets: ['favicon.ico', 'icon-192.png', 'icon-512.png', 'apple-touch-icon.png'],
+      workbox: {
+        navigateFallbackDenylist: [/^\/anki-app\/\?/, /^\/anki-app\/#/],
+      },
       manifest: {
         name: '暗記カード',
         short_name: '暗記カード',
