@@ -1,5 +1,5 @@
 import { supabase } from './supabase';
-import type { Card, Deck, StudySession, Exam } from '../types';
+import type { Card, Deck, StudySession, Exam, Milestone } from '../types';
 
 // Helper to convert snake_case to camelCase
 function toCamelCase(obj: Record<string, unknown>): Record<string, unknown> {
@@ -206,6 +206,60 @@ export async function upsertStudySession(userId: string, session: StudySession):
   }
 }
 
+// ============ MILESTONES ============
+
+export async function fetchMilestones(userId: string): Promise<Milestone[]> {
+  const { data, error } = await supabase
+    .from('milestones')
+    .select('*')
+    .eq('user_id', userId)
+    .order('target_date', { ascending: true });
+
+  if (error) {
+    console.error('Error fetching milestones:', error);
+    return [];
+  }
+
+  return (data || []).map(m => ({
+    id: m.id,
+    examName: m.exam_name,
+    title: m.title,
+    targetDate: m.target_date,
+    targetScore: m.target_score,
+    actualScore: m.actual_score,
+    targetSubjects: m.target_subjects,
+    status: m.status,
+    notes: m.notes,
+    createdAt: m.created_at,
+    updatedAt: m.updated_at,
+  })) as Milestone[];
+}
+
+export async function upsertMilestones(userId: string, milestones: Milestone[]): Promise<void> {
+  if (milestones.length === 0) return;
+
+  const { error } = await supabase
+    .from('milestones')
+    .upsert(milestones.map(m => ({
+      id: m.id,
+      user_id: userId,
+      exam_name: m.examName,
+      title: m.title,
+      target_date: m.targetDate,
+      target_score: m.targetScore,
+      actual_score: m.actualScore,
+      target_subjects: m.targetSubjects,
+      status: m.status,
+      notes: m.notes,
+      created_at: m.createdAt,
+      updated_at: m.updatedAt,
+    })));
+
+  if (error) {
+    console.error('Error upserting milestones:', error);
+  }
+}
+
 // ============ USER SETTINGS ============
 
 export async function fetchUserSettings(userId: string): Promise<{
@@ -261,13 +315,15 @@ export async function syncToRemote(
   sessions: StudySession[],
   streak: number,
   lastStudyDate: string | null,
-  exams: Exam[] = []
+  exams: Exam[] = [],
+  milestones: Milestone[] = []
 ): Promise<void> {
   await Promise.all([
     ...decks.map(deck => upsertDeck(userId, deck)),
     upsertCards(userId, cards),
     ...sessions.map(session => upsertStudySession(userId, session)),
     upsertUserSettings(userId, streak, lastStudyDate, exams),
+    upsertMilestones(userId, milestones),
   ]);
 }
 
@@ -278,12 +334,14 @@ export async function fetchAllFromRemote(userId: string): Promise<{
   streak: number;
   lastStudyDate: string | null;
   exams: Exam[];
+  milestones: Milestone[];
 }> {
-  const [decks, cards, sessions, settings] = await Promise.all([
+  const [decks, cards, sessions, settings, milestones] = await Promise.all([
     fetchDecks(userId),
     fetchCards(userId),
     fetchStudySessions(userId),
     fetchUserSettings(userId),
+    fetchMilestones(userId),
   ]);
 
   return {
@@ -293,5 +351,6 @@ export async function fetchAllFromRemote(userId: string): Promise<{
     streak: settings?.streak ?? 0,
     lastStudyDate: settings?.lastStudyDate ?? null,
     exams: settings?.exams ?? [],
+    milestones,
   };
 }

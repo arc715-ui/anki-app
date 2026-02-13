@@ -1633,3 +1633,211 @@ body {
   font-size: var(--font-size-xs);
   padding: var(--spacing-xs) var(--spacing-sm);
 }
+
+/* ========== Smart Study Button ========== */
+.smart-study-btn {
+  width: 100%;
+  padding: var(--spacing-md) var(--spacing-lg);
+  background: linear-gradient(135deg, #6366f1 0%, #ec4899 50%, #f59e0b 100%);
+  color: white;
+  font-size: var(--font-size-lg);
+  font-weight: 700;
+  border: none;
+  border-radius: var(--border-radius-lg);
+  cursor: pointer;
+  transition: all var(--transition-fast);
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  gap: var(--spacing-sm);
+  box-shadow: 0 4px 16px rgba(99, 102, 241, 0.3);
+}
+
+.smart-study-btn:hover {
+  transform: translateY(-2px);
+  box-shadow: 0 6px 24px rgba(99, 102, 241, 0.4);
+}
+
+.smart-study-btn:active {
+  transform: scale(0.98);
+}
+
+/* ========== Study Exam Indicator ========== */
+.study-exam-indicator {
+  display: inline-block;
+  padding: var(--spacing-xs) var(--spacing-sm);
+  border: 2px solid var(--color-accent-primary);
+  border-radius: var(--border-radius-sm);
+  font-size: var(--font-size-xs);
+  font-weight: 600;
+  letter-spacing: 0.5px;
+}
+
+/* ========== Exam Countdown Milestone ========== */
+.exam-countdown__milestone {
+  font-size: 10px;
+  color: var(--color-text-secondary);
+  margin-top: 2px;
+  white-space: nowrap;
+  overflow: hidden;
+  text-overflow: ellipsis;
+}
+
+/* ========== Priority Subject Chips ========== */
+.priority-subject-chips {
+  display: flex;
+  flex-wrap: wrap;
+  gap: var(--spacing-xs);
+  margin-top: var(--spacing-sm);
+  padding-top: var(--spacing-sm);
+  border-top: 1px solid rgba(255, 255, 255, 0.05);
+}
+
+.priority-chip {
+  padding: var(--spacing-xs) var(--spacing-sm);
+  background: var(--color-bg-secondary);
+  border: 1px solid rgba(255, 255, 255, 0.1);
+  border-radius: 999px;
+  color: var(--color-text-secondary);
+  font-size: var(--font-size-xs);
+  cursor: pointer;
+  transition: all var(--transition-fast);
+}
+
+.priority-chip:hover {
+  border-color: var(--color-accent-primary);
+  color: var(--color-text-primary);
+}
+
+.priority-chip--active {
+  background: rgba(245, 158, 11, 0.2);
+  border-color: var(--color-warning);
+  color: var(--color-warning);
+  font-weight: 600;
+}
+
+/* ========== Milestone Manager ========== */
+.milestone-tabs {
+  display: flex;
+  gap: var(--spacing-xs);
+  padding: var(--spacing-sm) var(--spacing-lg);
+  overflow-x: auto;
+  scrollbar-width: none;
+  border-bottom: 1px solid rgba(255, 255, 255, 0.05);
+}
+
+.milestone-tabs::-webkit-scrollbar {
+  display: none;
+}
+
+.milestone-tab {
+  padding: var(--spacing-sm) var(--spacing-md);
+  background: none;
+  border: none;
+  border-bottom: 2px solid transparent;
+  color: var(--color-text-muted);
+  font-size: var(--font-size-sm);
+  cursor: pointer;
+  white-space: nowrap;
+  transition: all var(--transition-fast);
+}
+
+.milestone-tab:hover {
+  color: var(--color-text-primary);
+}
+
+.milestone-tab--active {
+  color: var(--color-text-primary);
+  border-bottom-color: var(--color-accent-primary);
+  font-weight: 600;
+}
+
+.milestone-list {
+  padding: var(--spacing-lg);
+  display: flex;
+  flex-direction: column;
+  gap: var(--spacing-sm);
+}
+
+.milestone-list__section-title {
+  font-size: var(--font-size-sm);
+  font-weight: 600;
+  color: var(--color-text-muted);
+  text-transform: uppercase;
+  letter-spacing: 1px;
+  margin-top: var(--spacing-md);
+  margin-bottom: var(--spacing-xs);
+}
+
+.milestone-card {
+  padding: var(--spacing-md);
+  background: var(--color-bg-secondary);
+  border-radius: var(--border-radius-md);
+  border-left: 3px solid var(--color-accent-primary);
+  transition: all var(--transition-fast);
+}
+
+.milestone-card:hover {
+  background: var(--color-bg-hover);
+}
+
+.milestone-card--completed {
+  opacity: 0.7;
+}
+
+.milestone-card--missed {
+  opacity: 0.5;
+}
+
+.milestone-card__header {
+  display: flex;
+  align-items: flex-start;
+  gap: var(--spacing-sm);
+}
+
+.milestone-card__icon {
+  font-size: var(--font-size-xl);
+  flex-shrink: 0;
+}
+
+.milestone-card__info {
+  flex: 1;
+  min-width: 0;
+}
+
+.milestone-card__title {
+  font-size: var(--font-size-md);
+  font-weight: 600;
+  color: var(--color-text-primary);
+}
+
+.milestone-card__meta {
+  font-size: var(--font-size-xs);
+  color: var(--color-text-muted);
+  margin-top: 2px;
+}
+
+.milestone-card__gap {
+  font-size: var(--font-size-sm);
+  font-weight: 600;
+  margin-top: var(--spacing-xs);
+  padding: var(--spacing-xs) var(--spacing-sm);
+  border-radius: var(--border-radius-sm);
+  display: inline-block;
+}
+
+.milestone-card__gap--positive {
+  background: rgba(16, 185, 129, 0.15);
+  color: var(--color-success);
+}
+
+.milestone-card__gap--negative {
+  background: rgba(239, 68, 68, 0.15);
+  color: var(--color-error);
+}
+
+.milestone-card__actions {
+  display: flex;
+  gap: var(--spacing-xs);
+  margin-top: var(--spacing-sm);
+}

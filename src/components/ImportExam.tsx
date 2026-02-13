@@ -60,7 +60,20 @@ interface ConsultantQuestion {
   explanation: string;
 }
 
-type ExamType = 'sharoushi' | 'gyouseishosi' | 'consultant' | 'auto';
+// 中小企業診断士試験のJSON形式
+interface ShindanshiQuestion {
+  year: number | string;
+  subject: string;
+  question_number: number | string;
+  question_text: string;
+  choices: Record<string, string>;
+  correct_answer: string;
+  explanation: string;
+  sub_category?: string;
+  difficulty?: string;
+}
+
+type ExamType = 'sharoushi' | 'gyouseishosi' | 'consultant' | 'shindanshi' | 'auto';
 
 interface ParsedCard {
   front: string;
@@ -106,6 +119,10 @@ export function ImportExam({ deckId, onBack }: ImportExamProps) {
     // コンサルタント: choicesがオブジェクト + q_noがある
     if ('q_no' in first && 'choices' in first && typeof first.choices === 'object' && !Array.isArray(first.choices)) {
       return 'consultant';
+    }
+    // 中小企業診断士: choicesがオブジェクト + correct_answer + question_text
+    if ('question_text' in first && 'correct_answer' in first && 'choices' in first && typeof first.choices === 'object' && !Array.isArray(first.choices)) {
+      return 'shindanshi';
     }
     return 'auto';
   };
@@ -188,6 +205,35 @@ export function ImportExam({ deckId, onBack }: ImportExamProps) {
     return cards;
   };
 
+  const parseShindanshiData = (data: ShindanshiQuestion[]): ParsedCard[] => {
+    const cards: ParsedCard[] = [];
+
+    for (const question of data) {
+      const year = typeof question.year === 'number' ? `${question.year}年` : question.year;
+      const qNum = typeof question.question_number === 'number' ? `問${question.question_number}` : question.question_number;
+      const front = `【${year} ${question.subject} ${qNum}】${question.sub_category ? `[${question.sub_category}]` : ''}\n\n${question.question_text}`;
+
+      const choiceEntries = Object.entries(question.choices);
+      const options: CardOption[] = choiceEntries.map(([key, text]) => ({
+        id: `shindanshi-${question.year}-${question.question_number}-${key}`,
+        text: `${key}. ${text}`,
+        isCorrect: key === question.correct_answer,
+      }));
+
+      cards.push({
+        front,
+        back: question.explanation,
+        type: 'multiple_choice',
+        options,
+        difficulty: question.difficulty,
+        subject: question.subject,
+        subCategory: question.sub_category,
+      });
+    }
+
+    return cards;
+  };
+
   const handleFileSelect = async (event: React.ChangeEvent<HTMLInputElement>) => {
     const file = event.target.files?.[0];
     if (!file) return;
@@ -213,6 +259,9 @@ export function ImportExam({ deckId, onBack }: ImportExamProps) {
       } else if (detectedType === 'consultant') {
         parsedCards = parseConsultantData(data as ConsultantQuestion[]);
         setImportStatus(`コンサルタント試験形式: ${parsedCards.length}問を検出しました`);
+      } else if (detectedType === 'shindanshi') {
+        parsedCards = parseShindanshiData(data as ShindanshiQuestion[]);
+        setImportStatus(`中小企業診断士試験形式: ${parsedCards.length}問を検出しました`);
       } else {
         parsedCards = parseGyouseishosiData(data as GyouseishosiQuestion[]);
         setImportStatus(`行政書士試験形式: ${parsedCards.length}問を検出しました`);
@@ -279,6 +328,7 @@ export function ImportExam({ deckId, onBack }: ImportExamProps) {
             <option value="sharoushi">社労士試験（◯✕形式）</option>
             <option value="gyouseishosi">行政書士試験（多肢選択）</option>
             <option value="consultant">コンサルタント試験（五肢択一）</option>
+            <option value="shindanshi">中小企業診断士（多肢選択）</option>
           </select>
         </div>
 

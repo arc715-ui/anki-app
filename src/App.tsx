@@ -5,12 +5,13 @@ import { DeckList } from './components/DeckList';
 import { StudySession } from './components/StudySession';
 import { CardEditor } from './components/CardEditor';
 import { ImportExam } from './components/ImportExam';
+import { MilestoneManager } from './components/MilestoneManager';
 import { AuthButton } from './components/AuthButton';
 import { fetchAllFromRemote, syncToRemote } from './lib/syncService';
-import type { Deck } from './types';
+import type { Deck, Card } from './types';
 import './index.css';
 
-type View = 'home' | 'study' | 'edit' | 'import';
+type View = 'home' | 'study' | 'edit' | 'import' | 'milestones' | 'smart-study';
 
 function App() {
   const { user, initialize } = useAuth();
@@ -18,6 +19,7 @@ function App() {
   const {
     streak, getTodayStats, cards, getDueCardsForDeck, decks, sessions, lastStudyDate,
     exams, addExam, updateExam, removeExam, getExamStats, getTotalDailyQuota,
+    getSmartStudyQueue, getUpcomingMilestones, milestones, getSubjectsForDeck,
   } = store;
 
   const [view, setView] = useState<View>('home');
@@ -25,6 +27,8 @@ function App() {
   const [syncing, setSyncing] = useState(false);
   const [syncStatus, setSyncStatus] = useState<string | null>(null);
   const [showExamSettings, setShowExamSettings] = useState(false);
+  const [smartQueue, setSmartQueue] = useState<Card[]>([]);
+  const [showPrioritySubjects, setShowPrioritySubjects] = useState<string | null>(null); // exam id
 
   // Initialize auth on mount
   useEffect(() => {
@@ -50,6 +54,7 @@ function App() {
             streak: remoteData.streak || streak,
             lastStudyDate: remoteData.lastStudyDate || lastStudyDate,
             exams: remoteData.exams.length > 0 ? remoteData.exams : exams,
+            milestones: mergeById(milestones, remoteData.milestones),
           });
         }
 
@@ -61,7 +66,8 @@ function App() {
           currentState.sessions,
           currentState.streak,
           currentState.lastStudyDate,
-          currentState.exams
+          currentState.exams,
+          currentState.milestones
         );
 
         setSyncStatus('同期完了 ✓');
@@ -99,13 +105,13 @@ function App() {
     if (!user) return;
     const timeoutId = setTimeout(async () => {
       try {
-        await syncToRemote(user.id, decks, cards, sessions, streak, lastStudyDate, exams);
+        await syncToRemote(user.id, decks, cards, sessions, streak, lastStudyDate, exams, milestones);
       } catch (error) {
         console.error('Background sync error:', error);
       }
     }, 2000);
     return () => clearTimeout(timeoutId);
-  }, [user?.id, decks, cards, sessions, streak, lastStudyDate, exams]);
+  }, [user?.id, decks, cards, sessions, streak, lastStudyDate, exams, milestones]);
 
   const todayStats = getTodayStats();
   const totalDueCards = cards.filter(c => new Date(c.nextReview) <= new Date()).length;
@@ -125,11 +131,20 @@ function App() {
   const handleBack = () => {
     setView('home');
     setSelectedDeck(null);
+    setSmartQueue([]);
   };
 
   const handleImport = (deck: Deck) => {
     setSelectedDeck(deck);
     setView('import');
+  };
+
+  const handleSmartStudy = () => {
+    const queue = getSmartStudyQueue();
+    if (queue.length === 0) return;
+    setSmartQueue(queue);
+    setSelectedDeck(null);
+    setView('smart-study');
   };
 
   const handleAddExam = () => {
@@ -149,6 +164,33 @@ function App() {
       color: colors[exams.length % colors.length],
     });
   };
+
+  // Get all subjects for an exam's decks
+  const getExamSubjects = (examId: string): string[] => {
+    const exam = exams.find((e) => e.id === examId);
+    if (!exam || !exam.deckPattern) return [];
+    const examDecks = decks.filter((d) => d.name.includes(exam.deckPattern));
+    const subjects = new Set<string>();
+    for (const d of examDecks) {
+      for (const s of getSubjectsForDeck(d.id)) {
+        subjects.add(s);
+      }
+    }
+    return Array.from(subjects).sort();
+  };
+
+  if (view === 'smart-study' && smartQueue.length > 0) {
+    return (
+      <div className="app">
+        <StudySession
+          deckId="__smart__"
+          onComplete={handleBack}
+          onBack={handleBack}
+          smartQueue={smartQueue}
+        />
+      </div>
+    );
+  }
 
   if (view === 'study' && selectedDeck) {
     return (
@@ -176,6 +218,10 @@ function App() {
         <ImportExam deckId={selectedDeck.id} onBack={handleBack} />
       </div>
     );
+  }
+
+  if (view === 'milestones') {
+    return <MilestoneManager onBack={handleBack} />;
   }
 
   return (
@@ -212,16 +258,31 @@ function App() {
         </div>
       </div>
 
+      {/* Smart Study Button */}
+      {totalDueCards > 0 && exams.length > 0 && (
+        <div style={{ padding: '0 var(--spacing-lg) var(--spacing-sm)' }}>
+          <button className="smart-study-btn" onClick={handleSmartStudy}>
+            <span>🧠</span> スマート学習 ({Math.min(totalDueCards, totalDailyQuota)}枚)
+          </button>
+        </div>
+      )}
+
       {/* Multi-exam countdowns */}
       {exams.length > 0 ? (
         <div className="exam-countdowns" onClick={() => setShowExamSettings(true)}>
           {examStats.map((stat) => {
             const exam = exams.find((e) => e.id === stat.examId)!;
+            const nextMilestone = getUpcomingMilestones(exam.name)[0];
             return (
               <div key={stat.examId} className="exam-countdown" style={{ borderLeftColor: exam.color }}>
                 <div className="exam-countdown__name">{exam.shortName}</div>
                 <div className="exam-countdown__days">{stat.daysLeft}日</div>
                 <div className="exam-countdown__quota">{stat.dailyQuota}枚/日</div>
+                {nextMilestone && (
+                  <div className="exam-countdown__milestone">
+                    🎯 {nextMilestone.title}
+                  </div>
+                )}
               </div>
             );
           })}
@@ -239,6 +300,10 @@ function App() {
           <span className="nav-bar__icon">🏠</span>
           <span>ホーム</span>
         </button>
+        <button className="nav-bar__item" onClick={() => setView('milestones')}>
+          <span className="nav-bar__icon">🎯</span>
+          <span>目標</span>
+        </button>
         <button className="nav-bar__item" onClick={() => selectedDeck && setView('edit')}>
           <span className="nav-bar__icon">📝</span>
           <span>編集</span>
@@ -251,11 +316,11 @@ function App() {
 
       {/* Exam Settings Modal */}
       {showExamSettings && (
-        <div className="modal-overlay" onClick={() => setShowExamSettings(false)}>
+        <div className="modal-overlay" onClick={() => { setShowExamSettings(false); setShowPrioritySubjects(null); }}>
           <div className="modal" onClick={(e) => e.stopPropagation()}>
             <div className="modal__header">
               <h3 className="modal__title">試験設定</h3>
-              <button className="modal__close" onClick={() => setShowExamSettings(false)}>×</button>
+              <button className="modal__close" onClick={() => { setShowExamSettings(false); setShowPrioritySubjects(null); }}>×</button>
             </div>
             <div className="modal__body">
               {exams.length === 0 && (
@@ -265,6 +330,7 @@ function App() {
               )}
               {exams.map((exam) => {
                 const stat = examStats.find((s) => s.examId === exam.id);
+                const examSubjects = showPrioritySubjects === exam.id ? getExamSubjects(exam.id) : [];
                 return (
                   <div key={exam.id} className="exam-setting-card" style={{ borderLeftColor: exam.color }}>
                     <div className="exam-setting-card__header">
@@ -298,10 +364,41 @@ function App() {
                         const p = prompt('デッキ名キーワード:', exam.deckPattern);
                         if (p !== null) updateExam(exam.id, { deckPattern: p });
                       }}>パターン</button>
+                      <button className="btn btn--secondary" onClick={() => {
+                        setShowPrioritySubjects(showPrioritySubjects === exam.id ? null : exam.id);
+                      }}>優先科目{exam.prioritySubjects.length > 0 ? ` (${exam.prioritySubjects.length})` : ''}</button>
                       <button className="btn btn--danger" onClick={() => {
                         if (confirm(`${exam.name}を削除しますか？`)) removeExam(exam.id);
                       }}>削除</button>
                     </div>
+                    {/* Priority Subjects */}
+                    {showPrioritySubjects === exam.id && (
+                      <div className="priority-subject-chips">
+                        {examSubjects.length === 0 ? (
+                          <span style={{ fontSize: 'var(--font-size-xs)', color: 'var(--color-text-muted)' }}>
+                            科目がありません（デッキにカードをインポートしてください）
+                          </span>
+                        ) : (
+                          examSubjects.map((subj) => {
+                            const isActive = exam.prioritySubjects.includes(subj);
+                            return (
+                              <button
+                                key={subj}
+                                className={`priority-chip ${isActive ? 'priority-chip--active' : ''}`}
+                                onClick={() => {
+                                  const newPriority = isActive
+                                    ? exam.prioritySubjects.filter((s) => s !== subj)
+                                    : [...exam.prioritySubjects, subj];
+                                  updateExam(exam.id, { prioritySubjects: newPriority });
+                                }}
+                              >
+                                {subj} {isActive ? '★' : ''}
+                              </button>
+                            );
+                          })
+                        )}
+                      </div>
+                    )}
                   </div>
                 );
               })}

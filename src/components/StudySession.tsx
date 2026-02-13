@@ -7,23 +7,25 @@ interface StudySessionProps {
   deckId: string;
   onComplete: () => void;
   onBack: () => void;
+  smartQueue?: Card[];
 }
 
-export function StudySession({ deckId, onComplete, onBack }: StudySessionProps) {
-  const { getDueCardsForDeck, getSubjectsForDeck, reviewCardAction, recordSession, decks } = useStore();
+export function StudySession({ deckId, onComplete, onBack, smartQueue }: StudySessionProps) {
+  const { getDueCardsForDeck, getSubjectsForDeck, reviewCardAction, recordSession, decks, exams } = useStore();
 
+  const isSmartMode = !!smartQueue && smartQueue.length > 0;
   const deck = decks.find((d) => d.id === deckId);
-  const subjects = getSubjectsForDeck(deckId);
+  const subjects = isSmartMode ? [] : getSubjectsForDeck(deckId);
 
   // Subject filter state
   const [selectedSubject, setSelectedSubject] = useState<string | null>(null);
-  const [sessionStarted, setSessionStarted] = useState(subjects.length === 0);
+  const [sessionStarted, setSessionStarted] = useState(isSmartMode || subjects.length === 0);
 
   const [currentIndex, setCurrentIndex] = useState(0);
   const [isFlipped, setIsFlipped] = useState(false);
   const [studiedCount, setStudiedCount] = useState(0);
   const [correctCount, setCorrectCount] = useState(0);
-  const [sessionCards, setSessionCards] = useState<Card[]>([]);
+  const [sessionCards, setSessionCards] = useState<Card[]>(isSmartMode ? smartQueue : []);
 
   // For multiple choice / true-false
   const [selectedAnswer, setSelectedAnswer] = useState<string | boolean | null>(null);
@@ -31,6 +33,15 @@ export function StudySession({ deckId, onComplete, onBack }: StudySessionProps) 
 
   const currentCard = sessionCards[currentIndex];
   const totalCards = sessionCards.length;
+
+  // Get exam info for current card in smart mode
+  const getCurrentExamInfo = () => {
+    if (!isSmartMode || !currentCard) return null;
+    const cardDeck = decks.find((d) => d.id === currentCard.deckId);
+    if (!cardDeck) return null;
+    const exam = exams.find((e) => e.deckPattern && cardDeck.name.includes(e.deckPattern));
+    return exam ? { name: exam.shortName, color: exam.color, deckName: cardDeck.name } : { name: '', color: '', deckName: cardDeck.name };
+  };
 
   const handleStartSession = (subject: string | null) => {
     setSelectedSubject(subject);
@@ -42,8 +53,8 @@ export function StudySession({ deckId, onComplete, onBack }: StudySessionProps) 
     setCorrectCount(0);
   };
 
-  // Auto-start if no subjects
-  if (!sessionStarted && subjects.length === 0) {
+  // Auto-start if no subjects (non-smart mode)
+  if (!isSmartMode && !sessionStarted && subjects.length === 0) {
     const cards = getDueCardsForDeck(deckId);
     if (cards.length > 0 && sessionCards.length === 0) {
       setSessionCards([...cards]);
@@ -358,11 +369,18 @@ export function StudySession({ deckId, onComplete, onBack }: StudySessionProps) 
     </>
   );
 
+  const examInfo = getCurrentExamInfo();
+
   return (
     <>
       <header className="header">
-        <button className="header__back" onClick={onBack}>← {deck?.name || 'デッキ'}</button>
-        {selectedSubject && (
+        <button className="header__back" onClick={onBack}>← {isSmartMode ? 'スマート学習' : (deck?.name || 'デッキ')}</button>
+        {isSmartMode && examInfo && (
+          <span className="study-exam-indicator" style={{ borderColor: examInfo.color, color: examInfo.color }}>
+            {examInfo.name || examInfo.deckName}
+          </span>
+        )}
+        {!isSmartMode && selectedSubject && (
           <span className="header__subject-badge">{selectedSubject}</span>
         )}
       </header>

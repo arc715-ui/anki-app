@@ -1,7 +1,7 @@
 import { create } from 'zustand';
 import { persist } from 'zustand/middleware';
 import { v4 as uuidv4 } from 'uuid';
-import type { Card, Deck, StudySession, CardType, CardOption, Quality, Exam, ExamStats } from '../types';
+import type { Card, Deck, StudySession, CardType, CardOption, Quality, Exam, ExamStats, Milestone } from '../types';
 import { createCard, reviewCard, getDueCards } from '../lib/sm2';
 
 interface AppState {
@@ -20,6 +20,9 @@ interface AppState {
 
   // Multi-exam support
   exams: Exam[];
+
+  // Milestones
+  milestones: Milestone[];
 
   // Actions - Decks
   addDeck: (name: string, description: string, color: string) => string;
@@ -56,6 +59,13 @@ interface AppState {
   getExamStats: () => ExamStats[];
   getTotalDailyQuota: () => number;
   getSmartStudyQueue: () => Card[];
+
+  // Actions - Milestones
+  addMilestone: (milestone: Omit<Milestone, 'id' | 'createdAt' | 'updatedAt' | 'status'>) => void;
+  updateMilestone: (id: string, updates: Partial<Milestone>) => void;
+  deleteMilestone: (id: string) => void;
+  recordMockExamResult: (id: string, actualScore: number) => void;
+  getUpcomingMilestones: (examName?: string) => Milestone[];
 }
 
 export const useStore = create<AppState>()(
@@ -70,6 +80,7 @@ export const useStore = create<AppState>()(
       streak: 0,
       lastStudyDate: null,
       exams: [],
+      milestones: [],
 
       // Deck actions
       addDeck: (name, description, color) => {
@@ -388,6 +399,51 @@ export const useStore = create<AppState>()(
         }
 
         return result;
+      },
+
+      // Milestone actions
+      addMilestone: (milestone) => {
+        const now = new Date().toISOString();
+        set((state) => ({
+          milestones: [...state.milestones, {
+            ...milestone,
+            id: uuidv4(),
+            status: 'upcoming',
+            createdAt: now,
+            updatedAt: now,
+          }],
+        }));
+      },
+
+      updateMilestone: (id, updates) => {
+        set((state) => ({
+          milestones: state.milestones.map((m) =>
+            m.id === id ? { ...m, ...updates, updatedAt: new Date().toISOString() } : m
+          ),
+        }));
+      },
+
+      deleteMilestone: (id) => {
+        set((state) => ({
+          milestones: state.milestones.filter((m) => m.id !== id),
+        }));
+      },
+
+      recordMockExamResult: (id, actualScore) => {
+        set((state) => ({
+          milestones: state.milestones.map((m) =>
+            m.id === id
+              ? { ...m, actualScore, status: 'completed' as const, updatedAt: new Date().toISOString() }
+              : m
+          ),
+        }));
+      },
+
+      getUpcomingMilestones: (examName?) => {
+        const today = new Date().toISOString().split('T')[0];
+        return get().milestones
+          .filter((m) => m.status === 'upcoming' && m.targetDate >= today && (!examName || m.examName === examName))
+          .sort((a, b) => a.targetDate.localeCompare(b.targetDate));
       },
     }),
     {

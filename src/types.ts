@@ -89,3 +89,18 @@ export interface ExamStats {
   dailyQuota: number;
 }
 
+// Milestone (mock exam targets, study goals)
+export interface Milestone {
+  id: string;
+  examName: string;
+  title: string;
+  targetDate: string;      // YYYY-MM-DD
+  targetScore?: number;
+  actualScore?: number;
+  targetSubjects?: Record<string, number>;
+  status: 'upcoming' | 'completed' | 'missed';
+  notes?: string;
+  createdAt: string;
+  updatedAt: string;
+}
+
