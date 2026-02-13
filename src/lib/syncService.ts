@@ -1,7 +1,5 @@
 import { supabase } from './supabase';
-import type { Card, Deck, StudySession } from '../types';
-
-
+import type { Card, Deck, StudySession, Exam } from '../types';
 
 // Helper to convert snake_case to camelCase
 function toCamelCase(obj: Record<string, unknown>): Record<string, unknown> {
@@ -85,6 +83,12 @@ export async function fetchCards(userId: string): Promise<Card[]> {
     nextReview: c.next_review,
     createdAt: c.created_at,
     updatedAt: c.updated_at,
+    difficulty: c.difficulty,
+    correctRate: c.correct_rate,
+    source: c.source,
+    point: c.point,
+    subject: c.subject,
+    subCategory: c.sub_category,
   })) as Card[];
 }
 
@@ -106,6 +110,12 @@ export async function upsertCard(userId: string, card: Card): Promise<void> {
       next_review: card.nextReview,
       created_at: card.createdAt,
       updated_at: card.updatedAt,
+      difficulty: card.difficulty,
+      correct_rate: card.correctRate,
+      source: card.source,
+      point: card.point,
+      subject: card.subject,
+      sub_category: card.subCategory,
     });
 
   if (error) {
@@ -133,6 +143,12 @@ export async function upsertCards(userId: string, cards: Card[]): Promise<void> 
       next_review: card.nextReview,
       created_at: card.createdAt,
       updated_at: card.updatedAt,
+      difficulty: card.difficulty,
+      correct_rate: card.correctRate,
+      source: card.source,
+      point: card.point,
+      subject: card.subject,
+      sub_category: card.subCategory,
     })));
 
   if (error) {
@@ -192,7 +208,11 @@ export async function upsertStudySession(userId: string, session: StudySession):
 
 // ============ USER SETTINGS ============
 
-export async function fetchUserSettings(userId: string): Promise<{ streak: number; lastStudyDate: string | null } | null> {
+export async function fetchUserSettings(userId: string): Promise<{
+  streak: number;
+  lastStudyDate: string | null;
+  exams: Exam[];
+} | null> {
   const { data, error } = await supabase
     .from('user_settings')
     .select('*')
@@ -200,10 +220,7 @@ export async function fetchUserSettings(userId: string): Promise<{ streak: numbe
     .single();
 
   if (error) {
-    if (error.code === 'PGRST116') {
-      // No row found, create one
-      return null;
-    }
+    if (error.code === 'PGRST116') return null;
     console.error('Error fetching user settings:', error);
     return null;
   }
@@ -211,16 +228,23 @@ export async function fetchUserSettings(userId: string): Promise<{ streak: numbe
   return {
     streak: data.streak,
     lastStudyDate: data.last_study_date,
+    exams: data.exams ?? [],
   };
 }
 
-export async function upsertUserSettings(userId: string, streak: number, lastStudyDate: string | null): Promise<void> {
+export async function upsertUserSettings(
+  userId: string,
+  streak: number,
+  lastStudyDate: string | null,
+  exams: Exam[] = []
+): Promise<void> {
   const { error } = await supabase
     .from('user_settings')
     .upsert({
       user_id: userId,
       streak,
       last_study_date: lastStudyDate,
+      exams,
     });
 
   if (error) {
@@ -236,14 +260,14 @@ export async function syncToRemote(
   cards: Card[],
   sessions: StudySession[],
   streak: number,
-  lastStudyDate: string | null
+  lastStudyDate: string | null,
+  exams: Exam[] = []
 ): Promise<void> {
-  // Sync all data to Supabase
   await Promise.all([
     ...decks.map(deck => upsertDeck(userId, deck)),
     upsertCards(userId, cards),
     ...sessions.map(session => upsertStudySession(userId, session)),
-    upsertUserSettings(userId, streak, lastStudyDate),
+    upsertUserSettings(userId, streak, lastStudyDate, exams),
   ]);
 }
 
@@ -253,6 +277,7 @@ export async function fetchAllFromRemote(userId: string): Promise<{
   sessions: StudySession[];
   streak: number;
   lastStudyDate: string | null;
+  exams: Exam[];
 }> {
   const [decks, cards, sessions, settings] = await Promise.all([
     fetchDecks(userId),
@@ -267,5 +292,6 @@ export async function fetchAllFromRemote(userId: string): Promise<{
     sessions,
     streak: settings?.streak ?? 0,
     lastStudyDate: settings?.lastStudyDate ?? null,
+    exams: settings?.exams ?? [],
   };
 }

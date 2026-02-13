@@ -98,13 +98,21 @@ export function getDueCards(cards: Card[]): Card[] {
  */
 import type { CardType, CardOption } from '../types';
 
+function calculateInitialEaseFactor(correctRate?: number): number {
+  if (correctRate == null) return 2.5;
+  if (correctRate >= 80) return 2.7;
+  if (correctRate >= 60) return 2.5;
+  if (correctRate >= 40) return 2.3;
+  return 2.0;
+}
+
 export function createCard(
   id: string,
   deckId: string,
   front: string,
   back: string,
   type: CardType = 'flashcard',
-  options?: { correctAnswer?: boolean; options?: CardOption[] }
+  options?: { correctAnswer?: boolean; options?: CardOption[]; difficulty?: string; correctRate?: number; source?: string; point?: string; subject?: string; subCategory?: string }
 ): Card {
   const now = new Date().toISOString();
   return {
@@ -115,10 +123,16 @@ export function createCard(
     back,
     correctAnswer: options?.correctAnswer,
     options: options?.options,
+    difficulty: options?.difficulty,
+    correctRate: options?.correctRate,
+    source: options?.source,
+    point: options?.point,
+    subject: options?.subject,
+    subCategory: options?.subCategory,
     interval: 0,
     repetition: 0,
-    easeFactor: 2.5,
-    nextReview: now, // Due immediately
+    easeFactor: calculateInitialEaseFactor(options?.correctRate),
+    nextReview: now,
     createdAt: now,
     updatedAt: now,
   };

@@ -56,10 +56,13 @@ export const useAuth = create<AuthState>((set, get) => ({
 
   signInWithGoogle: async () => {
     set({ loading: true });
+    const redirectTo = window.location.hostname === 'localhost'
+      ? `${window.location.origin}/anki-app/`
+      : 'https://arc715-ui.github.io/anki-app/';
     const { error } = await supabase.auth.signInWithOAuth({
       provider: 'google',
       options: {
-        redirectTo: 'https://arc715-ui.github.io/anki-app/',
+        redirectTo,
       },
     });
     if (error) {

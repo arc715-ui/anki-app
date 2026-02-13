@@ -46,17 +46,50 @@ interface GyouseishosiQuestion {
   explanation: string;
 }
 
-type ExamType = 'sharoushi' | 'gyouseishosi' | 'auto';
+// 労働衛生コンサルタント試験のJSON形式
+interface ConsultantQuestion {
+  year: number;
+  q_no: number;
+  exam: string;
+  subject: string;
+  law_detail: string;
+  question_type: string;
+  question: string;
+  choices: Record<string, string>;
+  answer: string;
+  explanation: string;
+}
+
+type ExamType = 'sharoushi' | 'gyouseishosi' | 'consultant' | 'auto';
+
+interface ParsedCard {
+  front: string;
+  back: string;
+  type: 'true_false' | 'multiple_choice';
+  correctAnswer?: boolean;
+  options?: CardOption[];
+  difficulty?: string;
+  correctRate?: number;
+  source?: string;
+  point?: string;
+  subject?: string;
+  subCategory?: string;
+}
 
 export function ImportExam({ deckId, onBack }: ImportExamProps) {
-  const { importCards, getCardsForDeck } = useStore();
+  const { importCards, importCardsToMultipleDecks, getCardsForDeck, decks } = useStore();
   const [examType, setExamType] = useState<ExamType>('auto');
-  const [preview, setPreview] = useState<Array<{ front: string; back: string; type: 'true_false' | 'multiple_choice'; correctAnswer?: boolean; options?: CardOption[] }>>([]);
+  const [preview, setPreview] = useState<ParsedCard[]>([]);
   const [importStatus, setImportStatus] = useState<string>('');
   const [fileName, setFileName] = useState<string>('');
+  const [splitBySubject, setSplitBySubject] = useState(false);
   const fileInputRef = useRef<HTMLInputElement>(null);
 
   const existingCards = getCardsForDeck(deckId);
+  const currentDeck = decks.find((d) => d.id === deckId);
+
+  // 科目一覧を取得
+  const detectedSubjects = [...new Set(preview.filter((c) => c.subject).map((c) => c.subject!))];
 
   const detectExamType = (data: unknown[]): ExamType => {
     if (data.length === 0) return 'auto';
@@ -70,24 +103,33 @@ export function ImportExam({ deckId, onBack }: ImportExamProps) {
     if ('choices' in first && Array.isArray(first.choices)) {
       return 'gyouseishosi';
     }
+    // コンサルタント: choicesがオブジェクト + q_noがある
+    if ('q_no' in first && 'choices' in first && typeof first.choices === 'object' && !Array.isArray(first.choices)) {
+      return 'consultant';
+    }
     return 'auto';
   };
 
-  const parseSharoushiData = (data: SharoushiQuestion[]) => {
-    const cards: Array<{ front: string; back: string; type: 'true_false'; correctAnswer: boolean }> = [];
+  const parseSharoushiData = (data: SharoushiQuestion[]): ParsedCard[] => {
+    const cards: ParsedCard[] = [];
 
     for (const question of data) {
       for (const option of question.options) {
         const front = `【${question.year}年 ${question.subject_name} 問${question.question_number}${option.option_letter}】\n\n${option.question_text}`;
-        const explanation = option.point
-          ? `【ポイント】${option.point}\n\n【解説】${option.explanation}`
-          : option.explanation;
+        const explanation = option.explanation || '';
+
+        const correctRate = option.correct_rate ? parseFloat(option.correct_rate) : undefined;
 
         cards.push({
           front,
           back: explanation,
           type: 'true_false',
           correctAnswer: option.is_correct,
+          difficulty: option.difficulty,
+          correctRate: correctRate != null && !isNaN(correctRate) ? correctRate : undefined,
+          source: option.source,
+          point: option.point,
+          subject: question.subject_name,
         });
       }
     }
@@ -95,8 +137,8 @@ export function ImportExam({ deckId, onBack }: ImportExamProps) {
     return cards;
   };
 
-  const parseGyouseishosiData = (data: GyouseishosiQuestion[]) => {
-    const cards: Array<{ front: string; back: string; type: 'multiple_choice'; options: CardOption[] }> = [];
+  const parseGyouseishosiData = (data: GyouseishosiQuestion[]): ParsedCard[] => {
+    const cards: ParsedCard[] = [];
 
     for (const question of data) {
       const front = `【${question.year} ${question.question_number}】[${question.subject}${question.sub_category ? ` - ${question.sub_category}` : ''}]\n\n${question.question_text}`;
@@ -112,6 +154,34 @@ export function ImportExam({ deckId, onBack }: ImportExamProps) {
         back: question.explanation,
         type: 'multiple_choice',
         options,
+        subject: question.subject,
+        subCategory: question.sub_category,
+      });
+    }
+
+    return cards;
+  };
+
+  const parseConsultantData = (data: ConsultantQuestion[]): ParsedCard[] => {
+    const cards: ParsedCard[] = [];
+
+    for (const question of data) {
+      const front = `【${question.year}年 ${question.subject} 問${question.q_no}】[${question.law_detail}]\n\n${question.question}`;
+
+      const choiceEntries = Object.entries(question.choices);
+      const options: CardOption[] = choiceEntries.map(([key, text]) => ({
+        id: `${question.year}-${question.q_no}-${key}`,
+        text: `${key}. ${text}`,
+        isCorrect: key === question.answer,
+      }));
+
+      cards.push({
+        front,
+        back: question.explanation,
+        type: 'multiple_choice',
+        options,
+        subject: question.subject,
+        subCategory: question.law_detail,
       });
     }
 
@@ -136,10 +206,13 @@ export function ImportExam({ deckId, onBack }: ImportExamProps) {
         return;
       }
 
-      let parsedCards;
+      let parsedCards: ParsedCard[];
       if (detectedType === 'sharoushi') {
         parsedCards = parseSharoushiData(data as SharoushiQuestion[]);
         setImportStatus(`社労士試験形式: ${parsedCards.length}問を検出しました`);
+      } else if (detectedType === 'consultant') {
+        parsedCards = parseConsultantData(data as ConsultantQuestion[]);
+        setImportStatus(`コンサルタント試験形式: ${parsedCards.length}問を検出しました`);
       } else {
         parsedCards = parseGyouseishosiData(data as GyouseishosiQuestion[]);
         setImportStatus(`行政書士試験形式: ${parsedCards.length}問を検出しました`);
@@ -155,10 +228,27 @@ export function ImportExam({ deckId, onBack }: ImportExamProps) {
   const handleImport = () => {
     if (preview.length === 0) return;
 
-    importCards(deckId, preview);
-    setImportStatus(`✓ ${preview.length}問をインポートしました！`);
+    if (splitBySubject && detectedSubjects.length > 1) {
+      // 科目ごとにデッキ分割
+      const grouped: Record<string, ParsedCard[]> = {};
+      for (const card of preview) {
+        const key = card.subject || '未分類';
+        if (!grouped[key]) grouped[key] = [];
+        grouped[key].push(card);
+      }
+      const baseName = currentDeck?.name || 'インポート';
+      const color = currentDeck?.color || '#6366f1';
+      importCardsToMultipleDecks(baseName, color, grouped);
+      setImportStatus(`✓ ${detectedSubjects.length}科目・${preview.length}問をインポートしました！`);
+    } else {
+      // 1デッキにまとめてインポート
+      importCards(deckId, preview);
+      setImportStatus(`✓ ${preview.length}問をインポートしました！`);
+    }
+
     setPreview([]);
     setFileName('');
+    setSplitBySubject(false);
     if (fileInputRef.current) {
       fileInputRef.current.value = '';
     }
@@ -188,6 +278,7 @@ export function ImportExam({ deckId, onBack }: ImportExamProps) {
             <option value="auto">自動検出</option>
             <option value="sharoushi">社労士試験（◯✕形式）</option>
             <option value="gyouseishosi">行政書士試験（多肢選択）</option>
+            <option value="consultant">コンサルタント試験（五肢択一）</option>
           </select>
         </div>
 
@@ -201,7 +292,7 @@ export function ImportExam({ deckId, onBack }: ImportExamProps) {
               className="import-exam__file"
             />
             <span className="btn btn--primary">
-              📁 JSONファイルを選択
+              JSONファイルを選択
             </span>
           </label>
           {fileName && <span className="import-exam__filename">{fileName}</span>}
@@ -215,11 +306,40 @@ export function ImportExam({ deckId, onBack }: ImportExamProps) {
 
         {preview.length > 0 && (
           <>
+            {/* 科目分割オプション */}
+            {detectedSubjects.length > 1 && (
+              <div className="import-exam__option">
+                <label className="import-exam__option-label">
+                  <input
+                    type="checkbox"
+                    checked={splitBySubject}
+                    onChange={(e) => setSplitBySubject(e.target.checked)}
+                  />
+                  <span>科目ごとにデッキを分割（{detectedSubjects.length}科目検出）</span>
+                </label>
+                {splitBySubject && (
+                  <div className="import-exam__subject-list">
+                    {detectedSubjects.map((subj) => {
+                      const count = preview.filter((c) => c.subject === subj).length;
+                      return (
+                        <span key={subj} className="import-exam__subject-tag">
+                          {subj} ({count})
+                        </span>
+                      );
+                    })}
+                  </div>
+                )}
+              </div>
+            )}
+
             <div className="import-exam__preview">
               <h3>プレビュー（最初の3問）</h3>
               <div className="import-exam__preview-cards">
                 {preview.slice(0, 3).map((card, index) => (
                   <div key={index} className="import-exam__preview-card">
+                    {card.subject && (
+                      <span className="import-exam__preview-subject">{card.subject}</span>
+                    )}
                     <div className="import-exam__preview-front">
                       <strong>問題:</strong>
                       <pre>{card.front.slice(0, 200)}...</pre>
@@ -240,7 +360,10 @@ export function ImportExam({ deckId, onBack }: ImportExamProps) {
               className="btn btn--primary btn--large"
               onClick={handleImport}
             >
-              ✓ {preview.length}問をインポート
+              {splitBySubject && detectedSubjects.length > 1
+                ? `✓ ${detectedSubjects.length}科目・${preview.length}問をインポート`
+                : `✓ ${preview.length}問をインポート`
+              }
             </button>
           </>
         )}

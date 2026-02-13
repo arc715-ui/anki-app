@@ -10,16 +10,20 @@ interface StudySessionProps {
 }
 
 export function StudySession({ deckId, onComplete, onBack }: StudySessionProps) {
-  const { getDueCardsForDeck, reviewCardAction, recordSession, decks } = useStore();
+  const { getDueCardsForDeck, getSubjectsForDeck, reviewCardAction, recordSession, decks } = useStore();
 
   const deck = decks.find((d) => d.id === deckId);
-  const dueCards = getDueCardsForDeck(deckId);
+  const subjects = getSubjectsForDeck(deckId);
+
+  // Subject filter state
+  const [selectedSubject, setSelectedSubject] = useState<string | null>(null);
+  const [sessionStarted, setSessionStarted] = useState(subjects.length === 0);
 
   const [currentIndex, setCurrentIndex] = useState(0);
   const [isFlipped, setIsFlipped] = useState(false);
   const [studiedCount, setStudiedCount] = useState(0);
   const [correctCount, setCorrectCount] = useState(0);
-  const [sessionCards] = useState<Card[]>(() => [...dueCards]);
+  const [sessionCards, setSessionCards] = useState<Card[]>([]);
 
   // For multiple choice / true-false
   const [selectedAnswer, setSelectedAnswer] = useState<string | boolean | null>(null);
@@ -27,6 +31,24 @@ export function StudySession({ deckId, onComplete, onBack }: StudySessionProps) 
 
   const currentCard = sessionCards[currentIndex];
   const totalCards = sessionCards.length;
+
+  const handleStartSession = (subject: string | null) => {
+    setSelectedSubject(subject);
+    const cards = getDueCardsForDeck(deckId, subject || undefined);
+    setSessionCards([...cards]);
+    setSessionStarted(true);
+    setCurrentIndex(0);
+    setStudiedCount(0);
+    setCorrectCount(0);
+  };
+
+  // Auto-start if no subjects
+  if (!sessionStarted && subjects.length === 0) {
+    const cards = getDueCardsForDeck(deckId);
+    if (cards.length > 0 && sessionCards.length === 0) {
+      setSessionCards([...cards]);
+    }
+  }
 
   const handleFlip = useCallback(() => {
     if (currentCard?.type === 'flashcard') {
@@ -90,8 +112,44 @@ export function StudySession({ deckId, onComplete, onBack }: StudySessionProps) 
     return `${Math.round(result.interval / 365)}年後`;
   };
 
+  // Subject selection screen
+  if (!sessionStarted && subjects.length > 0) {
+    const allDueCount = getDueCardsForDeck(deckId).length;
+    return (
+      <div className="app">
+        <header className="header">
+          <button className="header__back" onClick={onBack}>← {deck?.name || 'デッキ'}</button>
+        </header>
+        <div className="subject-filter">
+          <h2 className="subject-filter__title">科目を選択</h2>
+          <div className="subject-filter__chips">
+            <button
+              className="subject-chip subject-chip--all"
+              onClick={() => handleStartSession(null)}
+            >
+              すべて ({allDueCount}枚)
+            </button>
+            {subjects.map((subj) => {
+              const count = getDueCardsForDeck(deckId, subj).length;
+              return (
+                <button
+                  key={subj}
+                  className="subject-chip"
+                  onClick={() => handleStartSession(subj)}
+                  disabled={count === 0}
+                >
+                  {subj} ({count}枚)
+                </button>
+              );
+            })}
+          </div>
+        </div>
+      </div>
+    );
+  }
+
   // No cards to study
-  if (totalCards === 0) {
+  if (sessionCards.length === 0 || totalCards === 0) {
     return (
       <div className="study-complete">
         <div className="study-complete__icon">🎉</div>
@@ -159,36 +217,95 @@ export function StudySession({ deckId, onComplete, onBack }: StudySessionProps) 
     </>
   );
 
+  const renderExplanation = (card: Card) => (
+    <div className="explanation-card">
+      {card.correctRate != null && (
+        <div className="explanation-card__badge">
+          {card.difficulty || `正解率: ${card.correctRate}%`}
+        </div>
+      )}
+
+      {card.point && (
+        <div className="explanation-card__section">
+          <div className="explanation-card__title">ポイント</div>
+          <div className="explanation-card__point">{card.point}</div>
+        </div>
+      )}
+
+      {card.back && (
+        <div className="explanation-card__section">
+          <div className="explanation-card__title">解説</div>
+          <div className="explanation-card__content">{card.back}</div>
+        </div>
+      )}
+
+      {card.source && (
+        <div className="explanation-card__section">
+          <div className="explanation-card__title">出典</div>
+          <div className="explanation-card__source">{card.source}</div>
+        </div>
+      )}
+    </div>
+  );
+
+  const renderRatingButtons = (correct: boolean) => (
+    <div className="rating-buttons">
+      {correct ? (
+        <>
+          <button className="rating-btn rating-btn--fail" onClick={() => handleRate(3)}>
+            <span>{getQualityLabel(3)}</span>
+            <span className="rating-btn__days">{getIntervalText(3)}</span>
+          </button>
+          <button className="rating-btn rating-btn--hard" onClick={() => handleRate(4)}>
+            <span>{getQualityLabel(4)}</span>
+            <span className="rating-btn__days">{getIntervalText(4)}</span>
+          </button>
+          <button className="rating-btn rating-btn--good" onClick={() => handleRate(5)}>
+            <span>{getQualityLabel(5)}</span>
+            <span className="rating-btn__days">{getIntervalText(5)}</span>
+          </button>
+        </>
+      ) : (
+        <>
+          <button className="rating-btn rating-btn--fail" onClick={() => handleRate(1)}>
+            <span>もう一度</span>
+            <span className="rating-btn__days">{getIntervalText(1)}</span>
+          </button>
+          <button className="rating-btn rating-btn--hard" onClick={() => handleRate(3)}>
+            <span>難しかった</span>
+            <span className="rating-btn__days">{getIntervalText(3)}</span>
+          </button>
+        </>
+      )}
+    </div>
+  );
+
   const renderTrueFalse = () => (
     <>
       <div className="question-card">
-        <span className="question-card__type">⭕ 正誤問題</span>
+        <span className="question-card__type">正誤問題</span>
         <div className="question-card__text">{currentCard.front}</div>
       </div>
 
       {!showResult ? (
         <div className="tf-answer-buttons">
           <button className="tf-answer-btn tf-answer-btn--true" onClick={() => handleTrueFalseAnswer(true)}>
-            <span className="tf-answer-btn__icon">⭕</span>
+            <span className="tf-answer-btn__icon">◯</span>
             <span>正しい</span>
           </button>
           <button className="tf-answer-btn tf-answer-btn--false" onClick={() => handleTrueFalseAnswer(false)}>
-            <span className="tf-answer-btn__icon">❌</span>
+            <span className="tf-answer-btn__icon">✕</span>
             <span>間違い</span>
           </button>
         </div>
       ) : (
         <div className="answer-result">
           <div className={`answer-result__badge ${isAnswerCorrect() ? 'answer-result__badge--correct' : 'answer-result__badge--wrong'}`}>
-            {isAnswerCorrect() ? '✓ 正解！' : '✗ 不正解'}
+            {isAnswerCorrect() ? '正解！' : '不正解'}
           </div>
           <p className="answer-result__text">正解: {currentCard.correctAnswer ? '正しい' : '間違い'}</p>
-          <div className="rating-buttons">
-            <button className="rating-btn rating-btn--fail" onClick={() => handleRate(isAnswerCorrect() ? 3 : 1)}>
-              <span>次へ</span>
-              <span className="rating-btn__days">{getIntervalText(isAnswerCorrect() ? 3 : 1)}</span>
-            </button>
-          </div>
+          {renderExplanation(currentCard)}
+          {renderRatingButtons(isAnswerCorrect())}
         </div>
       )}
     </>
@@ -197,7 +314,7 @@ export function StudySession({ deckId, onComplete, onBack }: StudySessionProps) 
   const renderMultipleChoice = () => (
     <>
       <div className="question-card">
-        <span className="question-card__type">🔢 多肢選択</span>
+        <span className="question-card__type">多肢選択</span>
         <div className="question-card__text">{currentCard.front}</div>
       </div>
 
@@ -232,14 +349,10 @@ export function StudySession({ deckId, onComplete, onBack }: StudySessionProps) 
       {showResult && (
         <div className="answer-result">
           <div className={`answer-result__badge ${isAnswerCorrect() ? 'answer-result__badge--correct' : 'answer-result__badge--wrong'}`}>
-            {isAnswerCorrect() ? '✓ 正解！' : '✗ 不正解'}
+            {isAnswerCorrect() ? '正解！' : '不正解'}
           </div>
-          <div className="rating-buttons">
-            <button className="rating-btn rating-btn--fail" onClick={() => handleRate(isAnswerCorrect() ? 5 : 1)}>
-              <span>次へ</span>
-              <span className="rating-btn__days">{getIntervalText(isAnswerCorrect() ? 5 : 1)}</span>
-            </button>
-          </div>
+          {renderExplanation(currentCard)}
+          {renderRatingButtons(isAnswerCorrect())}
         </div>
       )}
     </>
@@ -249,6 +362,9 @@ export function StudySession({ deckId, onComplete, onBack }: StudySessionProps) 
     <>
       <header className="header">
         <button className="header__back" onClick={onBack}>← {deck?.name || 'デッキ'}</button>
+        {selectedSubject && (
+          <span className="header__subject-badge">{selectedSubject}</span>
+        )}
       </header>
 
       <div className="study-container">
