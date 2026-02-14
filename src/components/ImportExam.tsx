@@ -329,6 +329,7 @@ export function ImportExam({ deckId, onBack }: ImportExamProps) {
         const options = question.choices.map(c => ({
           id: c.number.toString(),
           text: c.text,
+          isCorrect: c.number.toString() === question.correct_answer,
         }));
         cards.push({
           front,
