@@ -194,16 +194,17 @@ function splitByNumberedPattern(text: string): Record<string, { text: string; is
   return result;
 }
 
-// 番号+読点パターン (1、正しい。... 2、誤り。...) で分割（行政書士の通常問題用）
+// 番号パターン (1．妥当でない。... 2．正しい。...) で分割（行政書士の通常問題用）
+// 「1．」「1、」「1.」のいずれにも対応
 function splitByJapaneseNumbered(text: string): { prefix: string; perChoice: Record<string, { text: string; isCorrect: boolean | null }> } {
   const result: Record<string, { text: string; isCorrect: boolean | null }> = {};
 
-  // 「1、」「2、」...で始まる位置を検出
-  const pattern = /(?:^|\s)(\d)[、,]\s*/g;
-  const parts: { key: string; start: number }[] = [];
+  // 「1．」「1、」「1.」で始まる位置を検出（文頭 or 直前が句点・空白等）
+  const pattern = /(?:^|[。\s])(\d)[．.、,]\s*/g;
+  const parts: { key: string; start: number; matchStart: number }[] = [];
   let match;
   while ((match = pattern.exec(text)) !== null) {
-    parts.push({ key: match[1], start: match.index + match[0].length });
+    parts.push({ key: match[1], start: match.index + match[0].length, matchStart: match.index });
   }
 
   if (parts.length < 2) {
@@ -211,13 +212,10 @@ function splitByJapaneseNumbered(text: string): { prefix: string; perChoice: Rec
   }
 
   // 最初のマーカー前をprefixとして保存
-  const firstMatchStart = text.indexOf(parts[0].key + '、');
-  const prefix = firstMatchStart > 0 ? text.slice(0, firstMatchStart).trim() : '';
+  const prefix = parts[0].matchStart > 0 ? text.slice(0, parts[0].matchStart).trim() : '';
 
   for (let i = 0; i < parts.length; i++) {
-    const end = i + 1 < parts.length
-      ? text.lastIndexOf(parts[i + 1].key + '、', parts[i + 1].start)
-      : text.length;
+    const end = i + 1 < parts.length ? parts[i + 1].matchStart : text.length;
     const segment = text.slice(parts[i].start, end).trim();
     const isCorrect = detectChoiceCorrectness(segment);
     result[parts[i].key] = { text: segment, isCorrect };
@@ -228,14 +226,9 @@ function splitByJapaneseNumbered(text: string): { prefix: string; perChoice: Rec
 
 // 選択肢の正誤を判定
 function detectChoiceCorrectness(text: string): boolean | null {
-  if (/^正しい/.test(text)) return true;
-  if (/^誤り/.test(text)) return false;
-  if (/^正解/.test(text)) return true;
-  if (/^不正解/.test(text)) return false;
-  if (/^妥当である/.test(text)) return true;
-  if (/^妥当でない/.test(text)) return false;
-  if (/^適切/.test(text)) return true;
-  if (/^不適切/.test(text)) return false;
+  // 否定系を先にチェック（「妥当でない」が「妥当」より前に判定されるように）
+  if (/^(妥当でない|誤り|不正解|不適切|間違い|誤っている|含まれない|規定されていない|認められない|できない|ない)/.test(text)) return false;
+  if (/^(正しい|正解|妥当である|妥当|適切|含まれる|規定されている|認められる|明文で規定)/.test(text)) return true;
   return null;
 }
 
@@ -323,7 +316,7 @@ export function ImportExam({ deckId, onBack }: ImportExamProps) {
 
     for (const question of data) {
       // 記述式・多肢選択式はそのまま（一問一答に変換しない）
-      const skipSplit = /記述式|多肢選択/.test(question.sub_category || '');
+      const skipSplit = /記述式|多肢選択/.test(question.subject || '') || /記述式|多肢選択/.test(question.sub_category || '');
       if (skipSplit) {
         const front = `【${question.year} ${question.question_number}】[${question.subject}${question.sub_category ? ` - ${question.sub_category}` : ''}]\n\n${question.question_text}`;
         const options = question.choices.map(c => ({
