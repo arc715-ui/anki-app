@@ -174,24 +174,9 @@ export function ImportExam({ deckId, onBack }: ImportExamProps) {
     const cards: ParsedCard[] = [];
 
     for (const question of data) {
-      // 記述式・多肢選択式はそのまま（一問一答に変換しない）
-      const skipSplit = /記述式|多肢選択/.test(question.subject || '') || /記述式|多肢選択/.test(question.sub_category || '');
-      if (skipSplit) {
-        const front = `【${question.year} ${question.question_number}】[${question.subject}${question.sub_category ? ` - ${question.sub_category}` : ''}]\n\n${question.question_text}`;
-        const options = question.choices.map(c => ({
-          id: c.number.toString(),
-          text: c.text,
-          isCorrect: c.number.toString() === question.correct_answer,
-        }));
-        cards.push({
-          front,
-          back: question.explanation,
-          type: 'multiple_choice',
-          correctAnswer: undefined,
-          options,
-          subject: question.subject,
-          subCategory: question.sub_category,
-        });
+      // 記述式・多肢選択式は一問一答に向かないため完全スキップ
+      const shouldSkip = /記述式|多肢選択/.test(question.subject || '') || /記述式|多肢選択/.test(question.sub_category || '');
+      if (shouldSkip) {
         continue;
       }
 

@@ -987,8 +987,8 @@ body {
 /* Study - Question Card */
 .question-card {
   width: 100%;
-  max-width: 400px;
-  padding: var(--spacing-xl);
+  max-width: 480px;
+  padding: var(--spacing-lg);
   background: var(--color-bg-card);
   border-radius: var(--border-radius-xl);
   border: 1px solid rgba(255, 255, 255, 0.1);
@@ -1007,8 +1007,13 @@ body {
 }
 
 .question-card__text {
-  font-size: var(--font-size-xl);
-  line-height: 1.4;
+  font-size: var(--font-size-base);
+  line-height: 1.6;
+  max-height: 50vh;
+  overflow-y: auto;
+  text-align: left;
+  white-space: pre-wrap;
+  word-break: break-all;
 }
 
 /* True/False Answer Buttons */
@@ -1016,7 +1021,7 @@ body {
   display: flex;
   gap: var(--spacing-md);
   width: 100%;
-  max-width: 400px;
+  max-width: 480px;
 }
 
 .tf-answer-btn {
@@ -1060,7 +1065,7 @@ body {
   flex-direction: column;
   gap: var(--spacing-sm);
   width: 100%;
-  max-width: 400px;
+  max-width: 480px;
 }
 
 .mc-option {
@@ -1126,7 +1131,7 @@ body {
   align-items: center;
   gap: var(--spacing-md);
   width: 100%;
-  max-width: 400px;
+  max-width: 480px;
 }
 
 .answer-result__badge {
