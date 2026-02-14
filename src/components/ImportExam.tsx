@@ -75,6 +75,138 @@ interface ShindanshiQuestion {
 
 type ExamType = 'sharoushi' | 'gyouseishosi' | 'consultant' | 'shindanshi' | 'auto';
 
+// ============================================================
+// 解説分割ヘルパー関数
+// ============================================================
+
+// カタカナマーカー（ア．イ．ウ．...）で解説を分割（行政書士 組合せ問題用）
+const KANA_MARKERS = ['ア', 'イ', 'ウ', 'エ', 'オ', 'カ', 'キ', 'ク', 'ケ', 'コ'];
+
+function splitByKanaMarkers(text: string): Record<string, { explanation: string; isCorrect: boolean | null }> {
+  const result: Record<string, { explanation: string; isCorrect: boolean | null }> = {};
+
+  // パターン: ア．～ or ア. ～ (全角・半角ピリオド対応)
+  const pattern = new RegExp(
+    `(${KANA_MARKERS.join('|')})[．.]\\s*`,
+    'g'
+  );
+
+  const parts: { marker: string; start: number }[] = [];
+  let match;
+  while ((match = pattern.exec(text)) !== null) {
+    parts.push({ marker: match[1], start: match.index + match[0].length });
+  }
+
+  for (let i = 0; i < parts.length; i++) {
+    const end = i + 1 < parts.length
+      ? text.lastIndexOf(parts[i + 1].marker, parts[i + 1].start)
+      : text.length;
+    const segment = text.slice(parts[i].start, end).trim();
+
+    // 正誤判定キーワード
+    const isCorrect = detectCorrectness(segment);
+
+    result[parts[i].marker] = { explanation: segment, isCorrect };
+  }
+
+  return result;
+}
+
+// question_text からカタカナ付き記述（ア～オ）を抽出（行政書士 組合せ問題用）
+function extractKanaStatements(questionText: string): Record<string, string> {
+  const result: Record<string, string> = {};
+
+  const pattern = new RegExp(
+    `(${KANA_MARKERS.join('|')})[．.\\s]+(.*?)(?=(?:${KANA_MARKERS.join('|')})[．.]|$)`,
+    'gs'
+  );
+
+  let match;
+  while ((match = pattern.exec(questionText)) !== null) {
+    result[match[1]] = match[2].trim();
+  }
+
+  return result;
+}
+
+// 正誤判定: テキスト冒頭のキーワードから判定
+function detectCorrectness(text: string): boolean | null {
+  const lower = text.slice(0, 30);
+  // 正しい系
+  if (/^(正しい|妥当である|妥当|適切である|適切|正解)/.test(lower)) return true;
+  // 間違い系
+  if (/^(誤り|妥当でない|不適切|間違い|誤っている|不正解)/.test(lower)) return false;
+  return null;
+}
+
+// 行政書士の組合せ問題かどうかを判定
+function isComboQuestion(question: GyouseishosiQuestion): boolean {
+  // 選択肢が「ア・イ」のようなカタカナの組合せかどうか
+  if (question.choices.length === 0) return false;
+  const firstChoiceText = question.choices[0].text;
+  // 「ア・イ」「ア・ウ」のようなパターン
+  return /^[アイウエオカキクケコ][・、][アイウエオカキクケコ]/.test(firstChoiceText);
+}
+
+// 労衛コン・診断士: 「選択肢別:」パターンで解説を分割
+function splitConsultantExplanation(explanation: string): { prefix: string; perChoice: Record<string, { text: string; isCorrect: boolean | null }> } {
+  const perChoice: Record<string, { text: string; isCorrect: boolean | null }> = {};
+
+  // 「選択肢別:」で分割
+  const markerIdx = explanation.indexOf('選択肢別:');
+  if (markerIdx === -1) {
+    // 選択肢別マーカーがない場合、番号パターンで直接試す
+    return { prefix: '', perChoice: splitByNumberedPattern(explanation) };
+  }
+
+  const prefix = explanation.slice(0, markerIdx).trim();
+  const choicePart = explanation.slice(markerIdx + '選択肢別:'.length).trim();
+
+  // 「 / 」で分割 → 各セグメントは「1:誤り。～」形式
+  const segments = choicePart.split(/\s*\/\s*/);
+  for (const seg of segments) {
+    const m = seg.match(/^(\d+|[A-Eア-オa-e]):(.+)/s);
+    if (m) {
+      const key = m[1];
+      const content = m[2].trim();
+      const isCorrect = detectChoiceCorrectness(content);
+      perChoice[key] = { text: content, isCorrect };
+    }
+  }
+
+  return { prefix, perChoice };
+}
+
+// 番号パターン (1:～ / 2:～) で分割を試みる
+function splitByNumberedPattern(text: string): Record<string, { text: string; isCorrect: boolean | null }> {
+  const result: Record<string, { text: string; isCorrect: boolean | null }> = {};
+  // パターン: 「1:」「2:」...で始まるセグメント、「 / 」区切り
+  const segments = text.split(/\s*\/\s*/);
+  for (const seg of segments) {
+    const m = seg.match(/^(\d+|[A-Eア-オa-e]):(.+)/s);
+    if (m) {
+      const key = m[1];
+      const content = m[2].trim();
+      const isCorrect = detectChoiceCorrectness(content);
+      result[key] = { text: content, isCorrect };
+    }
+  }
+  return result;
+}
+
+// 選択肢の正誤を判定
+function detectChoiceCorrectness(text: string): boolean | null {
+  if (/^正しい/.test(text)) return true;
+  if (/^誤り/.test(text)) return false;
+  if (/^正解/.test(text)) return true;
+  if (/^不正解/.test(text)) return false;
+  if (/^妥当である/.test(text)) return true;
+  if (/^妥当でない/.test(text)) return false;
+  if (/^適切/.test(text)) return true;
+  if (/^不適切/.test(text)) return false;
+  return null;
+}
+
 interface ParsedCard {
   front: string;
   back: string;
@@ -158,22 +290,59 @@ export function ImportExam({ deckId, onBack }: ImportExamProps) {
     const cards: ParsedCard[] = [];
 
     for (const question of data) {
-      const front = `【${question.year} ${question.question_number}】[${question.subject}${question.sub_category ? ` - ${question.sub_category}` : ''}]\n\n${question.question_text}`;
+      if (isComboQuestion(question)) {
+        // ===== 組合せ問題: ア～オの個別記述を一問一答化 =====
+        const statements = extractKanaStatements(question.question_text);
+        const explanations = splitByKanaMarkers(question.explanation);
 
-      const options: CardOption[] = question.choices.map((choice) => ({
-        id: `${question.que_id}-${choice.number}`,
-        text: `${choice.number}. ${choice.text}`,
-        isCorrect: choice.number.toString() === question.correct_answer,
-      }));
+        // 問題文からア～オ部分を除いた前文（共通の問い）
+        const firstKanaIdx = question.question_text.search(
+          new RegExp(`(${KANA_MARKERS.join('|')})[．.]`)
+        );
+        const commonPrefix = firstKanaIdx > 0
+          ? question.question_text.slice(0, firstKanaIdx).trim()
+          : '';
 
-      cards.push({
-        front,
-        back: question.explanation,
-        type: 'multiple_choice',
-        options,
-        subject: question.subject,
-        subCategory: question.sub_category,
-      });
+        for (const [kana, statement] of Object.entries(statements)) {
+          const expData = explanations[kana];
+          const explanation = expData?.explanation || question.explanation;
+          const isCorrect = expData?.isCorrect;
+
+          const front = `【${question.year} ${question.question_number}-${kana}】[${question.subject}${question.sub_category ? ` - ${question.sub_category}` : ''}]\n\n${commonPrefix ? commonPrefix + '\n\n' : ''}▼ ${kana}\n${statement}`;
+
+          cards.push({
+            front,
+            back: explanation,
+            type: 'true_false',
+            correctAnswer: isCorrect ?? undefined as unknown as boolean,
+            subject: question.subject,
+            subCategory: question.sub_category,
+          });
+        }
+      } else {
+        // ===== 通常問題: 各選択肢を一問一答化（解説も分割を試みる） =====
+        const explanations = splitByKanaMarkers(question.explanation);
+        const hasPerChoiceExp = Object.keys(explanations).length > 0;
+
+        for (const choice of question.choices) {
+          const isCorrect = choice.number.toString() === question.correct_answer;
+          const front = `【${question.year} ${question.question_number}-${choice.number}】[${question.subject}${question.sub_category ? ` - ${question.sub_category}` : ''}]\n\n${question.question_text}\n\n▼ 選択肢 ${choice.number}\n${choice.text}`;
+
+          // 番号→カタカナ対応で解説を取得（1→ア, 2→イ, ...）
+          const kanaKey = KANA_MARKERS[choice.number - 1];
+          const perChoiceExp = hasPerChoiceExp && kanaKey ? explanations[kanaKey] : null;
+          const back = perChoiceExp ? perChoiceExp.explanation : question.explanation;
+
+          cards.push({
+            front,
+            back,
+            type: 'true_false',
+            correctAnswer: isCorrect,
+            subject: question.subject,
+            subCategory: question.sub_category,
+          });
+        }
+      }
     }
 
     return cards;
@@ -183,23 +352,34 @@ export function ImportExam({ deckId, onBack }: ImportExamProps) {
     const cards: ParsedCard[] = [];
 
     for (const question of data) {
-      const front = `【${question.year}年 ${question.subject} 問${question.q_no}】[${question.law_detail}]\n\n${question.question}`;
+      // 記述式・穴埋め式はスキップ
+      if (question.question_type === '記述式' || question.question_type === '穴埋め') continue;
+
+      // 解説を選択肢別に分割
+      const { prefix, perChoice } = splitConsultantExplanation(question.explanation);
+      const hasPerChoiceExp = Object.keys(perChoice).length > 0;
 
       const choiceEntries = Object.entries(question.choices);
-      const options: CardOption[] = choiceEntries.map(([key, text]) => ({
-        id: `${question.year}-${question.q_no}-${key}`,
-        text: `${key}. ${text}`,
-        isCorrect: key === question.answer,
-      }));
+      for (const [key, text] of choiceEntries) {
+        const isCorrect = key === question.answer;
 
-      cards.push({
-        front,
-        back: question.explanation,
-        type: 'multiple_choice',
-        options,
-        subject: question.subject,
-        subCategory: question.law_detail,
-      });
+        // 選択肢ごとの解説を取得
+        const choiceExp = hasPerChoiceExp ? perChoice[key] : null;
+        const back = choiceExp
+          ? (prefix ? prefix + '\n\n' : '') + choiceExp.text
+          : question.explanation;
+
+        const front = `【${question.year}年 ${question.subject} 問${question.q_no}-${key}】[${question.law_detail}]\n\n${question.question}\n\n▼ 選択肢 ${key}\n${text}`;
+
+        cards.push({
+          front,
+          back,
+          type: 'true_false',
+          correctAnswer: isCorrect,
+          subject: question.subject,
+          subCategory: question.law_detail,
+        });
+      }
     }
 
     return cards;
@@ -211,24 +391,33 @@ export function ImportExam({ deckId, onBack }: ImportExamProps) {
     for (const question of data) {
       const year = typeof question.year === 'number' ? `${question.year}年` : question.year;
       const qNum = typeof question.question_number === 'number' ? `問${question.question_number}` : question.question_number;
-      const front = `【${year} ${question.subject} ${qNum}】${question.sub_category ? `[${question.sub_category}]` : ''}\n\n${question.question_text}`;
+
+      // 解説を選択肢別に分割を試みる
+      const { prefix, perChoice } = splitConsultantExplanation(question.explanation);
+      const hasPerChoiceExp = Object.keys(perChoice).length > 0;
 
       const choiceEntries = Object.entries(question.choices);
-      const options: CardOption[] = choiceEntries.map(([key, text]) => ({
-        id: `shindanshi-${question.year}-${question.question_number}-${key}`,
-        text: `${key}. ${text}`,
-        isCorrect: key === question.correct_answer,
-      }));
+      for (const [key, text] of choiceEntries) {
+        const isCorrect = key === question.correct_answer;
 
-      cards.push({
-        front,
-        back: question.explanation,
-        type: 'multiple_choice',
-        options,
-        difficulty: question.difficulty,
-        subject: question.subject,
-        subCategory: question.sub_category,
-      });
+        // 選択肢ごとの解説を取得
+        const choiceExp = hasPerChoiceExp ? perChoice[key] : null;
+        const back = choiceExp
+          ? (prefix ? prefix + '\n\n' : '') + choiceExp.text
+          : question.explanation;
+
+        const front = `【${year} ${question.subject} ${qNum}-${key}】${question.sub_category ? `[${question.sub_category}]` : ''}\n\n${question.question_text}\n\n▼ 選択肢 ${key}\n${text}`;
+
+        cards.push({
+          front,
+          back,
+          type: 'true_false',
+          correctAnswer: isCorrect,
+          difficulty: question.difficulty,
+          subject: question.subject,
+          subCategory: question.sub_category,
+        });
+      }
     }
 
     return cards;
@@ -326,9 +515,9 @@ export function ImportExam({ deckId, onBack }: ImportExamProps) {
           >
             <option value="auto">自動検出</option>
             <option value="sharoushi">社労士試験（◯✕形式）</option>
-            <option value="gyouseishosi">行政書士試験（多肢選択）</option>
-            <option value="consultant">コンサルタント試験（五肢択一）</option>
-            <option value="shindanshi">中小企業診断士（多肢選択）</option>
+            <option value="gyouseishosi">行政書士試験（一問一答）</option>
+            <option value="consultant">コンサルタント試験（一問一答）</option>
+            <option value="shindanshi">中小企業診断士（一問一答）</option>
           </select>
         </div>
 
