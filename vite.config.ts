@@ -12,6 +12,8 @@ export default defineConfig({
       includeAssets: ['favicon.ico', 'icon-192.png', 'icon-512.png', 'apple-touch-icon.png'],
       workbox: {
         navigateFallbackDenylist: [/^\/anki-app\/\?/, /^\/anki-app\/#/],
+        skipWaiting: true,
+        clientsClaim: true,
       },
       manifest: {
         name: '暗記カード',
