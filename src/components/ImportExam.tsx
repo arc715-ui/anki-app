@@ -194,6 +194,38 @@ function splitByNumberedPattern(text: string): Record<string, { text: string; is
   return result;
 }
 
+// 番号+読点パターン (1、正しい。... 2、誤り。...) で分割（行政書士の通常問題用）
+function splitByJapaneseNumbered(text: string): { prefix: string; perChoice: Record<string, { text: string; isCorrect: boolean | null }> } {
+  const result: Record<string, { text: string; isCorrect: boolean | null }> = {};
+
+  // 「1、」「2、」...で始まる位置を検出
+  const pattern = /(?:^|\s)(\d)[、,]\s*/g;
+  const parts: { key: string; start: number }[] = [];
+  let match;
+  while ((match = pattern.exec(text)) !== null) {
+    parts.push({ key: match[1], start: match.index + match[0].length });
+  }
+
+  if (parts.length < 2) {
+    return { prefix: '', perChoice: {} };
+  }
+
+  // 最初のマーカー前をprefixとして保存
+  const firstMatchStart = text.indexOf(parts[0].key + '、');
+  const prefix = firstMatchStart > 0 ? text.slice(0, firstMatchStart).trim() : '';
+
+  for (let i = 0; i < parts.length; i++) {
+    const end = i + 1 < parts.length
+      ? text.lastIndexOf(parts[i + 1].key + '、', parts[i + 1].start)
+      : text.length;
+    const segment = text.slice(parts[i].start, end).trim();
+    const isCorrect = detectChoiceCorrectness(segment);
+    result[parts[i].key] = { text: segment, isCorrect };
+  }
+
+  return { prefix, perChoice: result };
+}
+
 // 選択肢の正誤を判定
 function detectChoiceCorrectness(text: string): boolean | null {
   if (/^正しい/.test(text)) return true;
@@ -321,17 +353,38 @@ export function ImportExam({ deckId, onBack }: ImportExamProps) {
         }
       } else {
         // ===== 通常問題: 各選択肢を一問一答化（解説も分割を試みる） =====
-        const explanations = splitByKanaMarkers(question.explanation);
-        const hasPerChoiceExp = Object.keys(explanations).length > 0;
+        // まずカタカナ分割を試行、失敗なら番号+読点パターン、さらにコンサル形式を試行
+        const kanaExplanations = splitByKanaMarkers(question.explanation);
+        const hasKanaExp = Object.keys(kanaExplanations).length > 0;
+
+        const numberedExp = !hasKanaExp ? splitByJapaneseNumbered(question.explanation) : null;
+        const hasNumberedExp = numberedExp ? Object.keys(numberedExp.perChoice).length > 0 : false;
+
+        const consultantExp = !hasKanaExp && !hasNumberedExp ? splitConsultantExplanation(question.explanation) : null;
+        const hasConsultantExp = consultantExp ? Object.keys(consultantExp.perChoice).length > 0 : false;
 
         for (const choice of question.choices) {
           const isCorrect = choice.number.toString() === question.correct_answer;
           const front = `【${question.year} ${question.question_number}-${choice.number}】[${question.subject}${question.sub_category ? ` - ${question.sub_category}` : ''}]\n\n${question.question_text}\n\n▼ 選択肢 ${choice.number}\n${choice.text}`;
 
-          // 番号→カタカナ対応で解説を取得（1→ア, 2→イ, ...）
-          const kanaKey = KANA_MARKERS[choice.number - 1];
-          const perChoiceExp = hasPerChoiceExp && kanaKey ? explanations[kanaKey] : null;
-          const back = perChoiceExp ? perChoiceExp.explanation : question.explanation;
+          let back = question.explanation;
+          const choiceKey = choice.number.toString();
+
+          if (hasKanaExp) {
+            // カタカナ対応（1→ア, 2→イ, ...）
+            const kanaKey = KANA_MARKERS[choice.number - 1];
+            if (kanaKey && kanaExplanations[kanaKey]) {
+              back = kanaExplanations[kanaKey].explanation;
+            }
+          } else if (hasNumberedExp && numberedExp!.perChoice[choiceKey]) {
+            // 番号+読点パターン（1、正しい。...）
+            const prefix = numberedExp!.prefix;
+            back = (prefix ? prefix + '\n\n' : '') + numberedExp!.perChoice[choiceKey].text;
+          } else if (hasConsultantExp && consultantExp!.perChoice[choiceKey]) {
+            // コンサル形式（選択肢別: 1:誤り。...）
+            const prefix = consultantExp!.prefix;
+            back = (prefix ? prefix + '\n\n' : '') + consultantExp!.perChoice[choiceKey].text;
+          }
 
           cards.push({
             front,
