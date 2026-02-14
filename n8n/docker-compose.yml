@@ -1,0 +1,63 @@
+version: "3.8"
+
+services:
+  n8n:
+    image: n8nio/n8n:latest
+    container_name: anki-n8n
+    restart: unless-stopped
+    ports:
+      - "5678:5678"
+    environment:
+      # --- n8n 基本設定 ---
+      - N8N_HOST=localhost
+      - N8N_PORT=5678
+      - N8N_PROTOCOL=http
+      - WEBHOOK_URL=http://localhost:5678/
+      - GENERIC_TIMEZONE=Asia/Tokyo
+      - TZ=Asia/Tokyo
+
+      # --- DB (PostgreSQL) ---
+      - DB_TYPE=postgresdb
+      - DB_POSTGRESDB_HOST=postgres
+      - DB_POSTGRESDB_PORT=5432
+      - DB_POSTGRESDB_DATABASE=n8n
+      - DB_POSTGRESDB_USER=n8n
+      - DB_POSTGRESDB_PASSWORD=${N8N_DB_PASSWORD:-n8n_local_pass}
+
+      # --- $env アクセス許可（セルフホストなので全開放OK） ---
+      - N8N_BLOCK_ENV_ACCESS_IN_NODE=false
+
+      # --- 環境変数（ワークフローから $env で参照） ---
+      - ANKI_USER_ID=${ANKI_USER_ID}
+      - SUPABASE_SERVICE_ROLE_KEY=${SUPABASE_SERVICE_ROLE_KEY}
+      - CLAUDE_API_KEY=${CLAUDE_API_KEY}
+      - TELEGRAM_CHAT_ID=${TELEGRAM_CHAT_ID}
+      - TELEGRAM_BOT_TOKEN=${TELEGRAM_BOT_TOKEN}
+      - NOTION_API_KEY=${NOTION_API_KEY:-}
+      - NOTION_DASHBOARD_PAGE_ID=${NOTION_DASHBOARD_PAGE_ID:-}
+      - NOTION_DAILY_LOG_DB_ID=${NOTION_DAILY_LOG_DB_ID:-}
+    volumes:
+      - n8n_data:/home/node/.n8n
+    depends_on:
+      postgres:
+        condition: service_healthy
+
+  postgres:
+    image: postgres:16-alpine
+    container_name: anki-n8n-db
+    restart: unless-stopped
+    environment:
+      - POSTGRES_DB=n8n
+      - POSTGRES_USER=n8n
+      - POSTGRES_PASSWORD=${N8N_DB_PASSWORD:-n8n_local_pass}
+    volumes:
+      - postgres_data:/var/lib/postgresql/data
+    healthcheck:
+      test: ["CMD-SHELL", "pg_isready -U n8n"]
+      interval: 5s
+      timeout: 5s
+      retries: 5
+
+volumes:
+  n8n_data:
+  postgres_data:

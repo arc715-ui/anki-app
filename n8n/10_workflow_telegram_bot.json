@@ -1,0 +1,555 @@
+{
+  "name": "Telegram Bot（Phase D）",
+  "nodes": [
+    {
+      "parameters": {
+        "rule": {
+          "interval": [
+            {
+              "field": "seconds",
+              "secondsInterval": 30
+            }
+          ]
+        }
+      },
+      "name": "30秒ごとポーリング",
+      "type": "n8n-nodes-base.scheduleTrigger",
+      "typeVersion": 1.2,
+      "position": [220, 300],
+      "id": "schedule-polling"
+    },
+    {
+      "parameters": {
+        "method": "GET",
+        "url": "=https://cgnrttgyjtjjzwkygvas.supabase.co/rest/v1/telegram_bot_state?id=eq.1&select=last_update_id",
+        "sendHeaders": true,
+        "headerParameters": {
+          "parameters": [
+            { "name": "apikey", "value": "={{ $env.SUPABASE_SERVICE_ROLE_KEY }}" },
+            { "name": "Authorization", "value": "=Bearer {{ $env.SUPABASE_SERVICE_ROLE_KEY }}" }
+          ]
+        },
+        "options": {}
+      },
+      "name": "オフセット取得",
+      "type": "n8n-nodes-base.httpRequest",
+      "typeVersion": 4.2,
+      "position": [440, 300],
+      "id": "get-offset"
+    },
+    {
+      "parameters": {
+        "method": "GET",
+        "url": "=https://api.telegram.org/bot{{ $env.TELEGRAM_BOT_TOKEN }}/getUpdates?offset={{ $json.last_update_id + 1 }}&timeout=0&allowed_updates=[\"message\",\"callback_query\"]",
+        "options": {}
+      },
+      "name": "Telegram更新取得",
+      "type": "n8n-nodes-base.httpRequest",
+      "typeVersion": 4.2,
+      "position": [660, 300],
+      "id": "get-updates"
+    },
+    {
+      "parameters": {
+        "mode": "runOnceForAllItems",
+        "jsCode": "const response = $input.first().json;\nconst updates = response.result || [];\n\nif (updates.length === 0) return [];\n\nconst chatId = $env.TELEGRAM_CHAT_ID;\nconst items = [];\nlet maxUpdateId = 0;\n\nfor (const update of updates) {\n  if (update.update_id > maxUpdateId) maxUpdateId = update.update_id;\n\n  if (update.callback_query) {\n    const cb = update.callback_query;\n    if (String(cb.message?.chat?.id) !== String(chatId)) continue;\n    items.push({\n      json: {\n        route: 'callback',\n        callbackData: cb.data,\n        callbackQueryId: cb.id,\n        chatId: cb.message.chat.id,\n        messageId: cb.message.message_id,\n        maxUpdateId\n      }\n    });\n    continue;\n  }\n\n  const msg = update.message;\n  if (!msg || String(msg.chat?.id) !== String(chatId)) continue;\n  const text = (msg.text || '').trim();\n\n  if (text === '/start' || text === '/menu') {\n    items.push({\n      json: { route: 'command', command: text, chatId: msg.chat.id, maxUpdateId }\n    });\n  } else if (text.length > 0) {\n    items.push({\n      json: { route: 'study_record', text, chatId: msg.chat.id, maxUpdateId }\n    });\n  }\n}\n\nif (items.length === 0) {\n  return [{ json: { route: '_skip', maxUpdateId } }];\n}\n\nfor (const item of items) {\n  item.json.maxUpdateId = maxUpdateId;\n}\nreturn items;"
+      },
+      "name": "ルーティング",
+      "type": "n8n-nodes-base.code",
+      "typeVersion": 2,
+      "position": [880, 300],
+      "id": "routing"
+    },
+    {
+      "parameters": {
+        "conditions": {
+          "number": [
+            {
+              "value1": "={{ $json.maxUpdateId }}",
+              "operation": "larger",
+              "value2": 0
+            }
+          ]
+        }
+      },
+      "name": "更新あり？",
+      "type": "n8n-nodes-base.if",
+      "typeVersion": 1,
+      "position": [1100, 500],
+      "id": "if-has-updates"
+    },
+    {
+      "parameters": {
+        "method": "PATCH",
+        "url": "=https://cgnrttgyjtjjzwkygvas.supabase.co/rest/v1/telegram_bot_state?id=eq.1",
+        "sendHeaders": true,
+        "headerParameters": {
+          "parameters": [
+            { "name": "apikey", "value": "={{ $env.SUPABASE_SERVICE_ROLE_KEY }}" },
+            { "name": "Authorization", "value": "=Bearer {{ $env.SUPABASE_SERVICE_ROLE_KEY }}" },
+            { "name": "Content-Type", "value": "application/json" },
+            { "name": "Prefer", "value": "return=minimal" }
+          ]
+        },
+        "sendBody": true,
+        "specifyBody": "json",
+        "jsonBody": "={{ JSON.stringify({ last_update_id: $json.maxUpdateId, updated_at: new Date().toISOString() }) }}",
+        "options": {}
+      },
+      "name": "オフセット更新",
+      "type": "n8n-nodes-base.httpRequest",
+      "typeVersion": 4.2,
+      "position": [1320, 500],
+      "id": "update-offset"
+    },
+    {
+      "parameters": {
+        "conditions": {
+          "string": [
+            {
+              "value1": "={{ $json.route }}",
+              "value2": "command"
+            }
+          ]
+        }
+      },
+      "name": "コマンド？",
+      "type": "n8n-nodes-base.if",
+      "typeVersion": 1,
+      "position": [1100, 300],
+      "id": "if-command"
+    },
+    {
+      "parameters": {
+        "conditions": {
+          "string": [
+            {
+              "value1": "={{ $json.route }}",
+              "value2": "callback"
+            }
+          ]
+        }
+      },
+      "name": "コールバック？",
+      "type": "n8n-nodes-base.if",
+      "typeVersion": 1,
+      "position": [1320, 350],
+      "id": "if-callback"
+    },
+    {
+      "parameters": {
+        "conditions": {
+          "string": [
+            {
+              "value1": "={{ $json.route }}",
+              "value2": "study_record"
+            }
+          ]
+        }
+      },
+      "name": "記録？",
+      "type": "n8n-nodes-base.if",
+      "typeVersion": 1,
+      "position": [1540, 400],
+      "id": "if-study-record"
+    },
+    {
+      "parameters": {
+        "mode": "runOnceForEachItem",
+        "jsCode": "const chatId = $json.chatId;\nconst text = '📋 *メニュー* \\u2014 操作を選んでください';\nconst keyboard = {\n  inline_keyboard: [\n    [\n      { text: '📊 今日の進捗', callback_data: 'progress' },\n      { text: '🎯 次のマイルストーン', callback_data: 'milestone' }\n    ],\n    [\n      { text: '📝 記録する', callback_data: 'record' }\n    ]\n  ]\n};\n\nreturn {\n  json: {\n    chatId,\n    text,\n    reply_markup: JSON.stringify(keyboard)\n  }\n};"
+      },
+      "name": "メニュー構築",
+      "type": "n8n-nodes-base.code",
+      "typeVersion": 2,
+      "position": [1320, 100],
+      "id": "build-menu"
+    },
+    {
+      "parameters": {
+        "method": "POST",
+        "url": "=https://api.telegram.org/bot{{ $env.TELEGRAM_BOT_TOKEN }}/sendMessage",
+        "sendHeaders": true,
+        "headerParameters": {
+          "parameters": [
+            { "name": "Content-Type", "value": "application/json" }
+          ]
+        },
+        "sendBody": true,
+        "specifyBody": "json",
+        "jsonBody": "={{ JSON.stringify({ chat_id: $json.chatId, text: $json.text, parse_mode: 'Markdown', reply_markup: $json.reply_markup }) }}",
+        "options": {}
+      },
+      "name": "メニュー送信",
+      "type": "n8n-nodes-base.httpRequest",
+      "typeVersion": 4.2,
+      "position": [1540, 100],
+      "id": "send-menu"
+    },
+    {
+      "parameters": {
+        "conditions": {
+          "string": [
+            {
+              "value1": "={{ $json.callbackData }}",
+              "value2": "progress"
+            }
+          ]
+        }
+      },
+      "name": "進捗？",
+      "type": "n8n-nodes-base.if",
+      "typeVersion": 1,
+      "position": [1540, 250],
+      "id": "if-progress"
+    },
+    {
+      "parameters": {
+        "conditions": {
+          "string": [
+            {
+              "value1": "={{ $json.callbackData }}",
+              "value2": "milestone"
+            }
+          ]
+        }
+      },
+      "name": "マイルストーン？",
+      "type": "n8n-nodes-base.if",
+      "typeVersion": 1,
+      "position": [1760, 350],
+      "id": "if-milestone"
+    },
+    {
+      "parameters": {
+        "method": "GET",
+        "url": "=https://cgnrttgyjtjjzwkygvas.supabase.co/rest/v1/daily_study_summary?user_id=eq.{{ $env.ANKI_USER_ID }}&days_left=gt.0&order=days_left.asc",
+        "sendHeaders": true,
+        "headerParameters": {
+          "parameters": [
+            { "name": "apikey", "value": "={{ $env.SUPABASE_SERVICE_ROLE_KEY }}" },
+            { "name": "Authorization", "value": "=Bearer {{ $env.SUPABASE_SERVICE_ROLE_KEY }}" }
+          ]
+        },
+        "options": {}
+      },
+      "name": "進捗データ取得",
+      "type": "n8n-nodes-base.httpRequest",
+      "typeVersion": 4.2,
+      "position": [1760, 150],
+      "id": "fetch-progress",
+      "alwaysOutputData": true
+    },
+    {
+      "parameters": {
+        "mode": "runOnceForAllItems",
+        "jsCode": "const rows = $input.all().map(i => i.json);\nconst cbItem = $('進捗？').first().json;\nconst chatId = cbItem.chatId;\nconst messageId = cbItem.messageId;\n\nconst icons = {\n  '社労士': '🔴', '行政書士': '🟡', '診断士': '🟠',\n  '中小企業診断士': '🟠', '労衛コン': '🔵', '労働衛生コンサルタント': '🔵'\n};\n\nif (rows.length === 0 || (rows.length === 1 && !rows[0].exam_name)) {\n  return [{ json: { chatId, messageId, text: '📊 今日の学習データがありません。' } }];\n}\n\nlet lines = [];\nlet totalStudied = 0;\nlet totalQuota = 0;\n\nfor (const r of rows) {\n  const icon = icons[r.short_name] || icons[r.exam_name] || '⚪';\n  const studied = r.studied_today || 0;\n  const quota = r.daily_quota || 0;\n  const pct = quota > 0 ? Math.round(studied / quota * 100) : 0;\n  const correctRate = studied > 0 ? Math.round((r.correct_today || 0) / studied * 100) : 0;\n  totalStudied += studied;\n  totalQuota += quota;\n\n  const bar = '█'.repeat(Math.floor(pct / 10)) + '░'.repeat(10 - Math.floor(pct / 10));\n  lines.push(`${icon} ${r.short_name || r.exam_name}（残${r.days_left}日）\\n  ${bar} ${pct}%  ${studied}/${quota}問  正答率${correctRate}%`);\n}\n\nconst overallPct = totalQuota > 0 ? Math.round(totalStudied / totalQuota * 100) : 0;\nlet text = `📊 今日の進捗\\n━━━━━━━━━━━━━\\n\\n${lines.join('\\n\\n')}\\n\\n━━━━━━━━━━━━━\\n達成率: ${overallPct}% (${totalStudied}/${totalQuota}問)`;\n\nreturn [{ json: { chatId, messageId, text } }];"
+      },
+      "name": "進捗整形",
+      "type": "n8n-nodes-base.code",
+      "typeVersion": 2,
+      "position": [1980, 150],
+      "id": "format-progress"
+    },
+    {
+      "parameters": {
+        "method": "POST",
+        "url": "=https://api.telegram.org/bot{{ $env.TELEGRAM_BOT_TOKEN }}/editMessageText",
+        "sendHeaders": true,
+        "headerParameters": {
+          "parameters": [
+            { "name": "Content-Type", "value": "application/json" }
+          ]
+        },
+        "sendBody": true,
+        "specifyBody": "json",
+        "jsonBody": "={{ JSON.stringify({ chat_id: $json.chatId, message_id: $json.messageId, text: $json.text }) }}",
+        "options": {}
+      },
+      "name": "進捗表示",
+      "type": "n8n-nodes-base.httpRequest",
+      "typeVersion": 4.2,
+      "position": [2200, 150],
+      "id": "show-progress"
+    },
+    {
+      "parameters": {
+        "method": "GET",
+        "url": "=https://cgnrttgyjtjjzwkygvas.supabase.co/rest/v1/milestones?user_id=eq.{{ $env.ANKI_USER_ID }}&status=eq.upcoming&target_date=gte.{{ new Date().toISOString().split('T')[0] }}&order=target_date.asc&limit=8",
+        "sendHeaders": true,
+        "headerParameters": {
+          "parameters": [
+            { "name": "apikey", "value": "={{ $env.SUPABASE_SERVICE_ROLE_KEY }}" },
+            { "name": "Authorization", "value": "=Bearer {{ $env.SUPABASE_SERVICE_ROLE_KEY }}" }
+          ]
+        },
+        "options": {}
+      },
+      "name": "マイルストーン取得",
+      "type": "n8n-nodes-base.httpRequest",
+      "typeVersion": 4.2,
+      "position": [1980, 280],
+      "id": "fetch-milestones",
+      "alwaysOutputData": true
+    },
+    {
+      "parameters": {
+        "mode": "runOnceForAllItems",
+        "jsCode": "const rows = $input.all().map(i => i.json);\nconst cbItem = $('マイルストーン？').first().json;\nconst chatId = cbItem.chatId;\nconst messageId = cbItem.messageId;\n\nif (rows.length === 0 || (rows.length === 1 && !rows[0].title)) {\n  return [{ json: { chatId, messageId, text: '🎯 今後のマイルストーンはありません。' } }];\n}\n\nconst icons = {\n  '社会保険労務士': '🔴', '行政書士': '🟡',\n  '中小企業診断士1次': '🟠', '労働衛生コンサルタント': '🔵'\n};\n\nconst today = new Date();\ntoday.setHours(0, 0, 0, 0);\n\nlet lines = [];\nfor (const m of rows) {\n  const icon = icons[m.exam_name] || '⚪';\n  const target = new Date(m.target_date);\n  const daysLeft = Math.ceil((target - today) / (1000 * 60 * 60 * 24));\n  const dateStr = `${target.getMonth() + 1}/${target.getDate()}`;\n  const scoreStr = m.target_score ? ` 目標:${m.target_score}%` : '';\n  lines.push(`${icon} ${dateStr}（残${daysLeft}日）${scoreStr}\\n  ${m.title}`);\n}\n\nlet text = `🎯 次のマイルストーン\\n━━━━━━━━━━━━━\\n\\n${lines.join('\\n\\n')}`;\n\nreturn [{ json: { chatId, messageId, text } }];"
+      },
+      "name": "マイルストーン整形",
+      "type": "n8n-nodes-base.code",
+      "typeVersion": 2,
+      "position": [2200, 280],
+      "id": "format-milestones"
+    },
+    {
+      "parameters": {
+        "method": "POST",
+        "url": "=https://api.telegram.org/bot{{ $env.TELEGRAM_BOT_TOKEN }}/editMessageText",
+        "sendHeaders": true,
+        "headerParameters": {
+          "parameters": [
+            { "name": "Content-Type", "value": "application/json" }
+          ]
+        },
+        "sendBody": true,
+        "specifyBody": "json",
+        "jsonBody": "={{ JSON.stringify({ chat_id: $json.chatId, message_id: $json.messageId, text: $json.text }) }}",
+        "options": {}
+      },
+      "name": "マイルストーン表示",
+      "type": "n8n-nodes-base.httpRequest",
+      "typeVersion": 4.2,
+      "position": [2420, 280],
+      "id": "show-milestones"
+    },
+    {
+      "parameters": {
+        "method": "POST",
+        "url": "=https://api.telegram.org/bot{{ $env.TELEGRAM_BOT_TOKEN }}/editMessageText",
+        "sendHeaders": true,
+        "headerParameters": {
+          "parameters": [
+            { "name": "Content-Type", "value": "application/json" }
+          ]
+        },
+        "sendBody": true,
+        "specifyBody": "json",
+        "jsonBody": "={{ JSON.stringify({ chat_id: $json.chatId, message_id: $json.messageId, text: '📝 記録モード\\n━━━━━━━━━━━━━\\n\\n学習結果をテキストで送信してください。\\n\\n例:\\n・社労士 労基 10問中8問正解\\n・行政書士 民法 20問中15問\\n・診断士 財務 30問25問正解\\n\\n試験名 + 科目 + 問題数 + 正解数\\nの形式で送ってください。' }) }}",
+        "options": {}
+      },
+      "name": "記録モード案内",
+      "type": "n8n-nodes-base.httpRequest",
+      "typeVersion": 4.2,
+      "position": [1980, 420],
+      "id": "record-guide"
+    },
+    {
+      "parameters": {
+        "method": "POST",
+        "url": "https://api.anthropic.com/v1/messages",
+        "sendHeaders": true,
+        "headerParameters": {
+          "parameters": [
+            { "name": "x-api-key", "value": "={{ $env.CLAUDE_API_KEY }}" },
+            { "name": "anthropic-version", "value": "2023-06-01" },
+            { "name": "content-type", "value": "application/json" }
+          ]
+        },
+        "sendBody": true,
+        "specifyBody": "json",
+        "jsonBody": "={{ JSON.stringify({ model: 'claude-haiku-4-5-20251001', max_tokens: 256, system: 'あなたは学習記録の解析アシスタントです。ユーザーのメッセージから試験名・科目・問題数・正解数を抽出してください。\\n\\n対応する試験:\\n- 社労士/シャロウシ/社保 → exam_name:\"社会保険労務士\", short_name:\"社労士\"\\n- 行政書士/ギョウセイ → exam_name:\"行政書士\", short_name:\"行政書士\"\\n- 診断士/シンダンシ/中小 → exam_name:\"中小企業診断士1次\", short_name:\"診断士1次\"\\n- 労衛コン/ロウエイ/労衛 → exam_name:\"労働衛生コンサルタント\", short_name:\"労衛コン\"\\n\\nJSON形式のみで返答してください。他のテキストは含めないでください。\\n成功: {\"success\":true,\"exam_name\":\"...\",\"short_name\":\"...\",\"subject\":\"...\",\"total\":N,\"correct\":N}\\n解析不可: {\"success\":false,\"error\":\"理由\"}', messages: [{ role: 'user', content: $json.text }] }) }}",
+        "options": {}
+      },
+      "name": "Claude解析",
+      "type": "n8n-nodes-base.httpRequest",
+      "typeVersion": 4.2,
+      "position": [1760, 550],
+      "id": "claude-parse"
+    },
+    {
+      "parameters": {
+        "mode": "runOnceForEachItem",
+        "jsCode": "const response = $json;\nconst rawText = response.content?.[0]?.text || '';\nconst chatId = $('記録？').first().json.chatId;\nconst originalText = $('記録？').first().json.text;\n\ntry {\n  const jsonMatch = rawText.match(/```(?:json)?\\s*([\\s\\S]*?)```/) ||\n                    rawText.match(/(\\{[\\s\\S]*?\\})/);\n  const jsonStr = jsonMatch ? jsonMatch[1].trim() : rawText.trim();\n  const parsed = JSON.parse(jsonStr);\n\n  if (!parsed.success) {\n    return { json: { valid: false, chatId, error: parsed.error || '解析できませんでした' } };\n  }\n\n  const total = parseInt(parsed.total);\n  const correct = parseInt(parsed.correct);\n\n  if (isNaN(total) || isNaN(correct) || total <= 0 || correct < 0 || correct > total) {\n    return { json: { valid: false, chatId, error: '問題数・正解数が正しくありません' } };\n  }\n\n  return {\n    json: {\n      valid: true,\n      chatId,\n      exam_name: parsed.exam_name,\n      short_name: parsed.short_name,\n      subject: parsed.subject || null,\n      total_questions: total,\n      correct_count: correct,\n      raw_message: originalText\n    }\n  };\n} catch (e) {\n  return { json: { valid: false, chatId, error: '応答の解析に失敗しました' } };\n}"
+      },
+      "name": "解析バリデーション",
+      "type": "n8n-nodes-base.code",
+      "typeVersion": 2,
+      "position": [1980, 550],
+      "id": "validate-parse"
+    },
+    {
+      "parameters": {
+        "conditions": {
+          "boolean": [
+            {
+              "value1": "={{ $json.valid }}",
+              "value2": true
+            }
+          ]
+        }
+      },
+      "name": "解析結果分岐",
+      "type": "n8n-nodes-base.if",
+      "typeVersion": 1,
+      "position": [2200, 550],
+      "id": "if-valid"
+    },
+    {
+      "parameters": {
+        "method": "POST",
+        "url": "=https://cgnrttgyjtjjzwkygvas.supabase.co/rest/v1/telegram_study_logs",
+        "sendHeaders": true,
+        "headerParameters": {
+          "parameters": [
+            { "name": "apikey", "value": "={{ $env.SUPABASE_SERVICE_ROLE_KEY }}" },
+            { "name": "Authorization", "value": "=Bearer {{ $env.SUPABASE_SERVICE_ROLE_KEY }}" },
+            { "name": "Content-Type", "value": "application/json" },
+            { "name": "Prefer", "value": "return=minimal" }
+          ]
+        },
+        "sendBody": true,
+        "specifyBody": "json",
+        "jsonBody": "={{ JSON.stringify({ user_id: $env.ANKI_USER_ID, exam_name: $json.exam_name, short_name: $json.short_name, subject: $json.subject, total_questions: $json.total_questions, correct_count: $json.correct_count, raw_message: $json.raw_message }) }}",
+        "options": {}
+      },
+      "name": "記録保存",
+      "type": "n8n-nodes-base.httpRequest",
+      "typeVersion": 4.2,
+      "position": [2420, 480],
+      "id": "save-record"
+    },
+    {
+      "parameters": {
+        "method": "POST",
+        "url": "=https://api.telegram.org/bot{{ $env.TELEGRAM_BOT_TOKEN }}/sendMessage",
+        "sendHeaders": true,
+        "headerParameters": {
+          "parameters": [
+            { "name": "Content-Type", "value": "application/json" }
+          ]
+        },
+        "sendBody": true,
+        "specifyBody": "json",
+        "jsonBody": "={{ JSON.stringify({ chat_id: $('解析結果分岐').first().json.chatId, text: '✅ 記録しました！\\n' + (() => { const icons = { '社労士': '🔴', '行政書士': '🟡', '診断士1次': '🟠', '労衛コン': '🔵' }; const d = $('解析結果分岐').first().json; const icon = icons[d.short_name] || '⚪'; const pct = Math.round(d.correct_count / d.total_questions * 100); return icon + ' ' + d.short_name + (d.subject ? ' / ' + d.subject : '') + '\\n📊 ' + pct + '% (' + d.correct_count + '/' + d.total_questions + '問)'; })() }) }}",
+        "options": {}
+      },
+      "name": "確認送信",
+      "type": "n8n-nodes-base.httpRequest",
+      "typeVersion": 4.2,
+      "position": [2640, 480],
+      "id": "send-confirm"
+    },
+    {
+      "parameters": {
+        "method": "POST",
+        "url": "=https://api.telegram.org/bot{{ $env.TELEGRAM_BOT_TOKEN }}/sendMessage",
+        "sendHeaders": true,
+        "headerParameters": {
+          "parameters": [
+            { "name": "Content-Type", "value": "application/json" }
+          ]
+        },
+        "sendBody": true,
+        "specifyBody": "json",
+        "jsonBody": "={{ JSON.stringify({ chat_id: $json.chatId, text: '❌ 解析できませんでした。\\n📝 例: 社労士 労基 10問中8問正解' }) }}",
+        "options": {}
+      },
+      "name": "エラー送信",
+      "type": "n8n-nodes-base.httpRequest",
+      "typeVersion": 4.2,
+      "position": [2420, 650],
+      "id": "send-error"
+    }
+  ],
+  "connections": {
+    "30秒ごとポーリング": {
+      "main": [[{ "node": "オフセット取得", "type": "main", "index": 0 }]]
+    },
+    "オフセット取得": {
+      "main": [[{ "node": "Telegram更新取得", "type": "main", "index": 0 }]]
+    },
+    "Telegram更新取得": {
+      "main": [[{ "node": "ルーティング", "type": "main", "index": 0 }]]
+    },
+    "ルーティング": {
+      "main": [[
+        { "node": "コマンド？", "type": "main", "index": 0 },
+        { "node": "更新あり？", "type": "main", "index": 0 }
+      ]]
+    },
+    "更新あり？": {
+      "main": [
+        [{ "node": "オフセット更新", "type": "main", "index": 0 }],
+        []
+      ]
+    },
+    "コマンド？": {
+      "main": [
+        [{ "node": "メニュー構築", "type": "main", "index": 0 }],
+        [{ "node": "コールバック？", "type": "main", "index": 0 }]
+      ]
+    },
+    "コールバック？": {
+      "main": [
+        [{ "node": "進捗？", "type": "main", "index": 0 }],
+        [{ "node": "記録？", "type": "main", "index": 0 }]
+      ]
+    },
+    "記録？": {
+      "main": [
+        [{ "node": "Claude解析", "type": "main", "index": 0 }],
+        []
+      ]
+    },
+    "メニュー構築": {
+      "main": [[{ "node": "メニュー送信", "type": "main", "index": 0 }]]
+    },
+    "進捗？": {
+      "main": [
+        [{ "node": "進捗データ取得", "type": "main", "index": 0 }],
+        [{ "node": "マイルストーン？", "type": "main", "index": 0 }]
+      ]
+    },
+    "マイルストーン？": {
+      "main": [
+        [{ "node": "マイルストーン取得", "type": "main", "index": 0 }],
+        [{ "node": "記録モード案内", "type": "main", "index": 0 }]
+      ]
+    },
+    "進捗データ取得": {
+      "main": [[{ "node": "進捗整形", "type": "main", "index": 0 }]]
+    },
+    "進捗整形": {
+      "main": [[{ "node": "進捗表示", "type": "main", "index": 0 }]]
+    },
+    "マイルストーン取得": {
+      "main": [[{ "node": "マイルストーン整形", "type": "main", "index": 0 }]]
+    },
+    "マイルストーン整形": {
+      "main": [[{ "node": "マイルストーン表示", "type": "main", "index": 0 }]]
+    },
+    "Claude解析": {
+      "main": [[{ "node": "解析バリデーション", "type": "main", "index": 0 }]]
+    },
+    "解析バリデーション": {
+      "main": [[{ "node": "解析結果分岐", "type": "main", "index": 0 }]]
+    },
+    "解析結果分岐": {
+      "main": [
+        [{ "node": "記録保存", "type": "main", "index": 0 }],
+        [{ "node": "エラー送信", "type": "main", "index": 0 }]
+      ]
+    },
+    "記録保存": {
+      "main": [[{ "node": "確認送信", "type": "main", "index": 0 }]]
+    }
+  },
+  "settings": {
+    "executionOrder": "v1"
+  },
+  "tags": [
+    { "name": "暗記カード" },
+    { "name": "Phase D" }
+  ]
+}
