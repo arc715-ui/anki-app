@@ -322,6 +322,26 @@ export function ImportExam({ deckId, onBack }: ImportExamProps) {
     const cards: ParsedCard[] = [];
 
     for (const question of data) {
+      // 記述式・多肢選択式はそのまま（一問一答に変換しない）
+      const skipSplit = /記述式|多肢選択/.test(question.sub_category || '');
+      if (skipSplit) {
+        const front = `【${question.year} ${question.question_number}】[${question.subject}${question.sub_category ? ` - ${question.sub_category}` : ''}]\n\n${question.question_text}`;
+        const options = question.choices.map(c => ({
+          id: c.number.toString(),
+          text: c.text,
+        }));
+        cards.push({
+          front,
+          back: question.explanation,
+          type: 'multiple_choice',
+          correctAnswer: undefined,
+          options,
+          subject: question.subject,
+          subCategory: question.sub_category,
+        });
+        continue;
+      }
+
       if (isComboQuestion(question)) {
         // ===== 組合せ問題: ア～オの個別記述を一問一答化 =====
         const statements = extractKanaStatements(question.question_text);
