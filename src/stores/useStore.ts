@@ -3,6 +3,7 @@ import { persist } from 'zustand/middleware';
 import { v4 as uuidv4 } from 'uuid';
 import type { Card, Deck, StudySession, CardType, CardOption, Quality, Exam, ExamStats, Milestone } from '../types';
 import { createCard, reviewCard, getDueCards } from '../lib/sm2';
+import { deleteDeckRemote, deleteCardsByDeckRemote } from '../lib/syncService';
 
 interface AppState {
   // Data
@@ -114,6 +115,9 @@ export const useStore = create<AppState>()(
           cards: state.cards.filter((card) => card.deckId !== id),
           currentDeckId: state.currentDeckId === id ? null : state.currentDeckId,
         }));
+        // Supabase からも削除（非同期、エラーはログのみ）
+        deleteCardsByDeckRemote(id).catch(() => {});
+        deleteDeckRemote(id).catch(() => {});
       },
 
       // Card actions

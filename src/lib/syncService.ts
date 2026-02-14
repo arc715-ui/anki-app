@@ -167,6 +167,17 @@ export async function deleteCardRemote(cardId: string): Promise<void> {
   }
 }
 
+export async function deleteCardsByDeckRemote(deckId: string): Promise<void> {
+  const { error } = await supabase
+    .from('cards')
+    .delete()
+    .eq('deck_id', deckId);
+
+  if (error) {
+    console.error('Error deleting cards by deck:', error);
+  }
+}
+
 // ============ CARD REVIEWS (個別回答履歴) ============
 
 export async function insertCardReview(
