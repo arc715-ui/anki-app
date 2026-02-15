@@ -89,6 +89,17 @@ export interface ExamStats {
   dailyQuota: number;
 }
 
+// Weak point recommendation (from weekly n8n analysis)
+export interface WeakPointRecommendation {
+  id: string;
+  examName: string;
+  subject: string;
+  priorityScore: number;  // 1-10 (Claude が設定)
+  recommendation: string;
+  weekOf: string;          // YYYY-MM-DD
+  createdAt: string;
+}
+
 // Milestone (mock exam targets, study goals)
 export interface Milestone {
   id: string;

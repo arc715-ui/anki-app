@@ -1,7 +1,7 @@
 import { create } from 'zustand';
 import { persist } from 'zustand/middleware';
 import { v4 as uuidv4 } from 'uuid';
-import type { Card, Deck, StudySession, CardType, CardOption, Quality, Exam, ExamStats, Milestone } from '../types';
+import type { Card, Deck, StudySession, CardType, CardOption, Quality, Exam, ExamStats, Milestone, WeakPointRecommendation } from '../types';
 import { createCard, reviewCard, getDueCards } from '../lib/sm2';
 import { deleteDeckRemote, deleteCardsByDeckRemote } from '../lib/syncService';
 
@@ -24,6 +24,9 @@ interface AppState {
 
   // Milestones
   milestones: Milestone[];
+
+  // Weak point recommendations (read-only, from n8n weekly analysis)
+  weakPointRecommendations: WeakPointRecommendation[];
 
   // Actions - Decks
   addDeck: (name: string, description: string, color: string) => string;
@@ -82,6 +85,7 @@ export const useStore = create<AppState>()(
       lastStudyDate: null,
       exams: [],
       milestones: [],
+      weakPointRecommendations: [],
 
       // Deck actions
       addDeck: (name, description, color) => {
@@ -362,7 +366,7 @@ export const useStore = create<AppState>()(
       },
 
       getSmartStudyQueue: () => {
-        const { exams, decks, cards } = get();
+        const { exams, decks, cards, weakPointRecommendations } = get();
         const examStats = get().getExamStats();
         if (examStats.length === 0) {
           return getDueCards(cards);
@@ -381,12 +385,37 @@ export const useStore = create<AppState>()(
             .filter((c) => examDeckIds.has(c.deckId) && new Date(c.nextReview) <= now)
             .sort((a, b) => new Date(a.nextReview).getTime() - new Date(b.nextReview).getTime());
 
-          // Boost priority subjects to front
-          if (exam.prioritySubjects.length > 0) {
-            const priority = dueCards.filter((c) => exam.prioritySubjects.includes(c.subject || ''));
-            const rest = dueCards.filter((c) => !exam.prioritySubjects.includes(c.subject || ''));
-            dueCards = [...priority, ...rest];
+          // Build weak point lookup for this exam: subject → priorityScore
+          const examRecs = weakPointRecommendations.filter(r => r.examName === exam.name);
+          const weakSubjectScores = new Map<string, number>();
+          for (const rec of examRecs) {
+            weakSubjectScores.set(rec.subject, rec.priorityScore);
           }
+
+          // Sort by priority tiers:
+          // 1. prioritySubjects && weak point → highest
+          // 2. prioritySubjects only
+          // 3. weak point only (by priorityScore desc)
+          // 4. rest (by nextReview asc, already sorted)
+          const isPriority = (c: Card) => exam.prioritySubjects.includes(c.subject || '');
+          const weakScore = (c: Card) => weakSubjectScores.get(c.subject || '') ?? 0;
+
+          dueCards.sort((a, b) => {
+            const aPri = isPriority(a);
+            const bPri = isPriority(b);
+            const aWeak = weakScore(a);
+            const bWeak = weakScore(b);
+
+            // Tier: priority+weak=3, priority=2, weak=1, other=0
+            const aTier = (aPri && aWeak > 0) ? 3 : aPri ? 2 : aWeak > 0 ? 1 : 0;
+            const bTier = (bPri && bWeak > 0) ? 3 : bPri ? 2 : bWeak > 0 ? 1 : 0;
+
+            if (aTier !== bTier) return bTier - aTier;
+            // Within weak tiers, sort by priorityScore desc
+            if (aWeak !== bWeak) return bWeak - aWeak;
+            // Finally by nextReview asc
+            return new Date(a.nextReview).getTime() - new Date(b.nextReview).getTime();
+          });
 
           buckets.push({
             cards: dueCards.slice(0, stat.dailyQuota),

@@ -1,5 +1,5 @@
 import { supabase } from './supabase';
-import type { Card, Deck, StudySession, Exam, Milestone } from '../types';
+import type { Card, Deck, StudySession, Exam, Milestone, WeakPointRecommendation } from '../types';
 
 // Helper to convert snake_case to camelCase
 function toCamelCase(obj: Record<string, unknown>): Record<string, unknown> {
@@ -299,6 +299,45 @@ export async function upsertMilestones(userId: string, milestones: Milestone[]):
   }
 }
 
+// ============ WEAK POINT RECOMMENDATIONS ============
+
+export async function fetchWeakPointRecommendations(userId: string): Promise<WeakPointRecommendation[]> {
+  // Get the most recent week_of value first, then fetch all records for that week
+  const { data: latest, error: latestError } = await supabase
+    .from('weak_point_recommendations')
+    .select('week_of')
+    .eq('user_id', userId)
+    .order('week_of', { ascending: false })
+    .limit(1);
+
+  if (latestError || !latest || latest.length === 0) {
+    if (latestError) console.error('Error fetching weak point recommendations:', latestError);
+    return [];
+  }
+
+  const { data, error } = await supabase
+    .from('weak_point_recommendations')
+    .select('*')
+    .eq('user_id', userId)
+    .eq('week_of', latest[0].week_of)
+    .order('priority_score', { ascending: false });
+
+  if (error) {
+    console.error('Error fetching weak point recommendations:', error);
+    return [];
+  }
+
+  return (data || []).map(r => ({
+    id: r.id,
+    examName: r.exam_name,
+    subject: r.subject,
+    priorityScore: r.priority_score,
+    recommendation: r.recommendation,
+    weekOf: r.week_of,
+    createdAt: r.created_at,
+  })) as WeakPointRecommendation[];
+}
+
 // ============ USER SETTINGS ============
 
 export async function fetchUserSettings(userId: string): Promise<{
@@ -374,13 +413,15 @@ export async function fetchAllFromRemote(userId: string): Promise<{
   lastStudyDate: string | null;
   exams: Exam[];
   milestones: Milestone[];
+  weakPointRecommendations: WeakPointRecommendation[];
 }> {
-  const [decks, cards, sessions, settings, milestones] = await Promise.all([
+  const [decks, cards, sessions, settings, milestones, weakPointRecommendations] = await Promise.all([
     fetchDecks(userId),
     fetchCards(userId),
     fetchStudySessions(userId),
     fetchUserSettings(userId),
     fetchMilestones(userId),
+    fetchWeakPointRecommendations(userId),
   ]);
 
   return {
@@ -391,5 +432,6 @@ export async function fetchAllFromRemote(userId: string): Promise<{
     lastStudyDate: settings?.lastStudyDate ?? null,
     exams: settings?.exams ?? [],
     milestones,
+    weakPointRecommendations,
   };
 }

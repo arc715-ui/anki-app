@@ -55,6 +55,7 @@ function App() {
             lastStudyDate: remoteData.lastStudyDate || lastStudyDate,
             exams: remoteData.exams.length > 0 ? remoteData.exams : exams,
             milestones: mergeById(milestones, remoteData.milestones),
+            weakPointRecommendations: remoteData.weakPointRecommendations,
           });
         }
 
