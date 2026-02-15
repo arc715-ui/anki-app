@@ -6,12 +6,13 @@ import { StudySession } from './components/StudySession';
 import { CardEditor } from './components/CardEditor';
 import { ImportExam } from './components/ImportExam';
 import { MilestoneManager } from './components/MilestoneManager';
+import { Dashboard } from './components/Dashboard';
 import { AuthButton } from './components/AuthButton';
 import { fetchAllFromRemote, syncToRemote } from './lib/syncService';
 import type { Deck, Card } from './types';
 import './index.css';
 
-type View = 'home' | 'study' | 'edit' | 'import' | 'milestones' | 'smart-study';
+type View = 'home' | 'study' | 'edit' | 'import' | 'milestones' | 'smart-study' | 'dashboard';
 
 function App() {
   const { user, initialize } = useAuth();
@@ -225,6 +226,10 @@ function App() {
     return <MilestoneManager onBack={handleBack} />;
   }
 
+  if (view === 'dashboard') {
+    return <Dashboard onBack={handleBack} />;
+  }
+
   return (
     <div className="app">
       <header className="header">
@@ -300,6 +305,10 @@ function App() {
         <button className="nav-bar__item nav-bar__item--active">
           <span className="nav-bar__icon">🏠</span>
           <span>ホーム</span>
+        </button>
+        <button className="nav-bar__item" onClick={() => setView('dashboard')}>
+          <span className="nav-bar__icon">📊</span>
+          <span>分析</span>
         </button>
         <button className="nav-bar__item" onClick={() => setView('milestones')}>
           <span className="nav-bar__icon">🎯</span>

@@ -1846,3 +1846,130 @@ body {
   gap: var(--spacing-xs);
   margin-top: var(--spacing-sm);
 }
+
+/* ========== Dashboard ========== */
+.dashboard {
+  padding: var(--spacing-md) var(--spacing-lg);
+  overflow-y: auto;
+  display: flex;
+  flex-direction: column;
+  gap: var(--spacing-md);
+}
+
+.dashboard__section {
+  background: var(--color-bg-card);
+  border-radius: var(--border-radius-md);
+  box-shadow: var(--shadow-md);
+  padding: var(--spacing-lg);
+}
+
+.dashboard__section-title {
+  font-size: var(--font-size-sm);
+  font-weight: 600;
+  color: var(--color-text-secondary);
+  text-transform: uppercase;
+  letter-spacing: 1px;
+  margin-bottom: var(--spacing-md);
+}
+
+/* Mastery rows */
+.mastery-row {
+  margin-bottom: var(--spacing-md);
+}
+
+.mastery-row:last-child {
+  margin-bottom: 0;
+}
+
+.mastery-row__header {
+  display: flex;
+  justify-content: space-between;
+  align-items: center;
+  margin-bottom: var(--spacing-xs);
+}
+
+.mastery-row__name {
+  font-size: var(--font-size-md);
+  font-weight: 600;
+  color: var(--color-text-primary);
+}
+
+.mastery-row__meta {
+  font-size: var(--font-size-xs);
+  color: var(--color-text-muted);
+}
+
+.mastery-bar {
+  height: 8px;
+  background: rgba(255, 255, 255, 0.08);
+  border-radius: 4px;
+  overflow: hidden;
+}
+
+.mastery-bar__fill {
+  height: 100%;
+  border-radius: 4px;
+  transition: width var(--transition-normal);
+  background: var(--exam-color, var(--color-accent-primary));
+}
+
+.mastery-row__detail {
+  font-size: var(--font-size-xs);
+  color: var(--color-text-muted);
+  margin-top: var(--spacing-xs);
+  text-align: right;
+}
+
+/* Heatmap */
+.heatmap {
+  overflow-x: auto;
+  scrollbar-width: none;
+}
+
+.heatmap::-webkit-scrollbar {
+  display: none;
+}
+
+.heatmap__grid {
+  min-width: 200px;
+}
+
+/* Dashboard legend */
+.dashboard__legend {
+  display: flex;
+  gap: var(--spacing-md);
+  margin-top: var(--spacing-sm);
+  justify-content: flex-end;
+}
+
+.dashboard__legend-item {
+  font-size: var(--font-size-xs);
+  color: var(--color-text-muted);
+  display: flex;
+  align-items: center;
+  gap: var(--spacing-xs);
+}
+
+.dashboard__legend-item::before {
+  content: '';
+  display: inline-block;
+  width: 10px;
+  height: 10px;
+  border-radius: 2px;
+}
+
+.dashboard__legend-item--weak::before {
+  background: var(--color-error);
+}
+
+.dashboard__legend-item--normal::before {
+  background: var(--color-accent-primary);
+  opacity: 0.7;
+}
+
+/* Recharts tooltip override for dark theme */
+.recharts-default-tooltip {
+  background: var(--color-bg-card) !important;
+  border: 1px solid rgba(255, 255, 255, 0.1) !important;
+  border-radius: var(--border-radius-sm) !important;
+}
