@@ -81,8 +81,25 @@ export function StudySession({ deckId, onComplete, onBack, smartQueue }: StudySe
     setShowResult(false);
     setIsFlipped(false);
 
-    if (currentIndex < totalCards - 1) {
-      setCurrentIndex((prev) => prev + 1);
+    // Check if card should be re-queued within this session (sub-day interval)
+    const result = calculateNextReview(quality, currentCard.repetition, currentCard.easeFactor, currentCard.interval);
+    const willRequeue = result.interval < 1;
+
+    if (willRequeue) {
+      // Get the updated card from the store and append to session queue
+      const freshCards = useStore.getState().cards;
+      const updatedCard = freshCards.find((c) => c.id === currentCard.id);
+      if (updatedCard) {
+        setSessionCards((prev) => [...prev, updatedCard]);
+      }
+    }
+
+    // totalCards + willRequeue accounts for the card we just appended
+    const effectiveTotal = totalCards + (willRequeue ? 1 : 0);
+    const nextIndex = currentIndex + 1;
+
+    if (nextIndex < effectiveTotal) {
+      setCurrentIndex(nextIndex);
     } else {
       recordSession(deckId, studiedCount + 1, correctCount + (quality >= 3 ? 1 : 0));
       onComplete();
@@ -117,6 +134,10 @@ export function StudySession({ deckId, onComplete, onBack, smartQueue }: StudySe
   const getIntervalText = (quality: Quality): string => {
     if (!currentCard) return '';
     const result = calculateNextReview(quality, currentCard.repetition, currentCard.easeFactor, currentCard.interval);
+    if (result.interval < 1) {
+      const minutes = Math.round(result.interval * 24 * 60);
+      return minutes < 60 ? `${minutes}分後` : `${Math.round(minutes / 60)}時間後`;
+    }
     if (result.interval === 1) return '1日後';
     if (result.interval < 30) return `${result.interval}日後`;
     if (result.interval < 365) return `${Math.round(result.interval / 30)}ヶ月後`;

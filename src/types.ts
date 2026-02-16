@@ -32,6 +32,7 @@ export interface Card {
   repetition: number;    // Number of consecutive correct answers
   easeFactor: number;    // Ease factor (starts at 2.5)
   nextReview: string;    // ISO date string for next review
+  lapseInterval?: number; // Pre-lapse interval (set when a graduated card fails)
   createdAt: string;
   updatedAt: string;
 }

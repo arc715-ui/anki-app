@@ -8,12 +8,19 @@
  * 3 - Correct response with serious difficulty
  * 4 - Correct response after hesitation
  * 5 - Perfect response with no hesitation
+ *
+ * Intervals < 1 are sub-day (in fractions of a day):
+ *   1 minute  = 1/1440
+ *   10 minutes = 10/1440
  */
 
 import type { Quality, ReviewResult, Card } from '../types';
 
+const MINUTES_PER_DAY = 24 * 60; // 1440
+
 /**
  * Calculate the next review interval based on SM-2 algorithm
+ * with Anki-style learning steps (sub-day intervals for new/failed cards)
  */
 export function calculateNextReview(
   quality: Quality,
@@ -21,10 +28,10 @@ export function calculateNextReview(
   easeFactor: number,
   interval: number
 ): ReviewResult {
-  // If quality < 3, reset repetitions
+  // Again (quality < 3): 1 minute, reset to learning
   if (quality < 3) {
     return {
-      interval: 1,
+      interval: 1 / MINUTES_PER_DAY,
       repetition: 0,
       easeFactor: Math.max(1.3, easeFactor - 0.2),
     };
@@ -36,22 +43,77 @@ export function calculateNextReview(
     easeFactor + (0.1 - (5 - quality) * (0.08 + (5 - quality) * 0.02))
   );
 
-  // Calculate new interval
+  // Learning phase: new card (rep=0) or sub-day interval
+  // Step 0: interval < 5min (new or just failed)
+  // Step 1: interval >= 5min but < 1 day (passed step 0)
+  const isLearning = repetition === 0 || interval < 1;
+  const isStep0 = isLearning && interval < 5 / MINUTES_PER_DAY;
+
   let newInterval: number;
-  if (repetition === 0) {
-    newInterval = 1;
+  let newRepetition: number;
+
+  if (isLearning && isStep0) {
+    // Step 0 (1min): Good advances to step 1, Easy graduates
+    if (quality === 3) {
+      newInterval = 1 / MINUTES_PER_DAY;   // Hard: repeat step 0 (1min)
+      newRepetition = 0;
+    } else if (quality === 5) {
+      newInterval = 4;                       // Easy: graduate to 4 days
+      newRepetition = 1;
+    } else {
+      newInterval = 10 / MINUTES_PER_DAY;   // Good: advance to step 1 (10min)
+      newRepetition = 0;
+    }
+  } else if (isLearning) {
+    // Step 1 (10min): Good graduates to 1 day, Easy to 4 days
+    if (quality === 3) {
+      newInterval = 10 / MINUTES_PER_DAY;   // Hard: repeat step 1 (10min)
+      newRepetition = 0;
+    } else if (quality === 5) {
+      newInterval = 4;                       // Easy: graduate to 4 days
+      newRepetition = 1;
+    } else {
+      newInterval = 1;                       // Good: graduate to 1 day
+      newRepetition = 1;
+    }
   } else if (repetition === 1) {
-    newInterval = 6;
+    // First review after graduation — use EF-based scaling (like Anki)
+    if (quality === 3) {
+      newInterval = Math.max(1, interval);
+    } else if (quality === 5) {
+      // Easy bonus: EF * 3 (e.g. 4d * 2.5 * 3 = 30d ≈ 1ヶ月)
+      newInterval = Math.max(interval + 1, Math.round(interval * newEaseFactor * 3));
+    } else {
+      // Good: EF scaling with min 4 days (e.g. 1d * 2.5 → 4d)
+      newInterval = Math.max(4, Math.round(interval * newEaseFactor));
+    }
+    newRepetition = repetition + 1;
   } else {
-    newInterval = Math.round(interval * newEaseFactor);
+    // Mature card (rep >= 2) — standard SM-2 with Easy bonus
+    if (quality === 3) {
+      newInterval = Math.max(interval, Math.round(interval * 1.2));
+    } else if (quality === 5) {
+      // Easy bonus: EF * 1.3
+      newInterval = Math.max(interval + 1, Math.round(interval * newEaseFactor * 1.3));
+    } else {
+      newInterval = Math.max(interval + 1, Math.round(interval * newEaseFactor));
+    }
+    newRepetition = repetition + 1;
   }
 
   return {
     interval: newInterval,
-    repetition: repetition + 1,
+    repetition: newRepetition,
     easeFactor: newEaseFactor,
   };
 }
+
+/**
+ * Lapse recovery: when a graduated card fails and re-graduates,
+ * the new interval is a percentage of the pre-lapse interval (not a full reset).
+ * 50% means a 30-day card → lapse → re-graduate at 15 days.
+ */
+const LAPSE_NEW_INTERVAL_PERCENT = 0.5;
 
 /**
  * Apply review result to a card and return updated card
@@ -64,14 +126,36 @@ export function reviewCard(card: Card, quality: Quality): Card {
     card.interval
   );
 
+  let newInterval = result.interval;
+  let lapseInterval: number | undefined = card.lapseInterval;
+
+  // Track lapse: graduated card fails → save pre-lapse interval
+  if (quality < 3 && card.interval >= 1 && card.repetition >= 1) {
+    lapseInterval = card.interval;
+  }
+
+  // Lapse recovery: graduating from relearning → use % of old interval
+  if (lapseInterval != null && newInterval >= 1 && result.repetition >= 1) {
+    const recoveryInterval = Math.max(1, Math.round(lapseInterval * LAPSE_NEW_INTERVAL_PERCENT));
+    newInterval = Math.max(recoveryInterval, newInterval);
+    lapseInterval = undefined; // Graduated, clear lapse tracking
+  }
+
   const nextReviewDate = new Date();
-  nextReviewDate.setDate(nextReviewDate.getDate() + result.interval);
+  if (newInterval < 1) {
+    // Sub-day interval: add minutes
+    const minutes = Math.round(newInterval * MINUTES_PER_DAY);
+    nextReviewDate.setTime(nextReviewDate.getTime() + minutes * 60 * 1000);
+  } else {
+    nextReviewDate.setDate(nextReviewDate.getDate() + newInterval);
+  }
 
   return {
     ...card,
-    interval: result.interval,
+    interval: newInterval,
     repetition: result.repetition,
     easeFactor: result.easeFactor,
+    lapseInterval,
     nextReview: nextReviewDate.toISOString(),
     updatedAt: new Date().toISOString(),
   };

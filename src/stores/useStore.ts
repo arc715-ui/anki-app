@@ -28,6 +28,14 @@ interface AppState {
   // Weak point recommendations (read-only, from n8n weekly analysis)
   weakPointRecommendations: WeakPointRecommendation[];
 
+  // Daily limits (Anki-style)
+  newCardsPerDay: number;          // Max new cards introduced per day (default 20)
+  reviewCardsPerDay: number;       // Max review cards per day (default 200)
+  dailyNewCardIds: { date: string; ids: string[] }; // Track new cards introduced today
+
+  // Actions - Settings
+  setDailyLimits: (newPerDay: number, reviewPerDay: number) => void;
+
   // Actions - Decks
   addDeck: (name: string, description: string, color: string) => string;
   updateDeck: (id: string, updates: Partial<Omit<Deck, 'id' | 'createdAt'>>) => void;
@@ -86,6 +94,14 @@ export const useStore = create<AppState>()(
       exams: [],
       milestones: [],
       weakPointRecommendations: [],
+      newCardsPerDay: 20,
+      reviewCardsPerDay: 200,
+      dailyNewCardIds: { date: '', ids: [] },
+
+      // Settings
+      setDailyLimits: (newPerDay, reviewPerDay) => {
+        set({ newCardsPerDay: newPerDay, reviewCardsPerDay: reviewPerDay });
+      },
 
       // Deck actions
       addDeck: (name, description, color) => {
@@ -158,6 +174,17 @@ export const useStore = create<AppState>()(
           });
         }
 
+        // Track new card introduction for daily limits
+        if (cardBeforeReview && cardBeforeReview.interval === 0 && cardBeforeReview.repetition === 0) {
+          const today = new Date().toISOString().split('T')[0];
+          const daily = get().dailyNewCardIds;
+          if (daily.date !== today) {
+            set({ dailyNewCardIds: { date: today, ids: [cardId] } });
+          } else if (!daily.ids.includes(cardId)) {
+            set({ dailyNewCardIds: { ...daily, ids: [...daily.ids, cardId] } });
+          }
+        }
+
         set((state) => ({
           cards: state.cards.map((card) =>
             card.id === cardId ? reviewCard(card, quality) : card
@@ -211,12 +238,47 @@ export const useStore = create<AppState>()(
 
       // Study actions
       getDueCardsForDeck: (deckId, subjectFilter?) => {
-        const { cards } = get();
+        const { cards, newCardsPerDay, reviewCardsPerDay, dailyNewCardIds } = get();
         let deckCards = cards.filter((c) => c.deckId === deckId);
         if (subjectFilter) {
           deckCards = deckCards.filter((c) => c.subject === subjectFilter);
         }
-        return getDueCards(deckCards);
+
+        const now = new Date();
+        const today = now.toISOString().split('T')[0];
+
+        // Categorize: new / learning / review
+        const newCards: Card[] = [];
+        const learningCards: Card[] = [];
+        const reviewCards: Card[] = [];
+
+        for (const card of deckCards) {
+          const isDueNow = new Date(card.nextReview) <= now;
+          if (card.interval === 0 && card.repetition === 0) {
+            newCards.push(card); // Always "due" since nextReview = createdAt
+          } else if (card.interval < 1 && card.repetition === 0) {
+            if (isDueNow) learningCards.push(card); // In learning steps
+          } else {
+            if (isDueNow) reviewCards.push(card); // Graduated, due for review
+          }
+        }
+
+        reviewCards.sort((a, b) =>
+          new Date(a.nextReview).getTime() - new Date(b.nextReview).getTime()
+        );
+
+        // Apply daily limits
+        const todayIds = dailyNewCardIds.date === today ? dailyNewCardIds.ids : [];
+        const newIntroducedToday = todayIds.filter((id) =>
+          deckCards.some((c) => c.id === id)
+        ).length;
+        const remainingNewSlots = Math.max(0, newCardsPerDay - newIntroducedToday);
+
+        const limitedReview = reviewCards.slice(0, reviewCardsPerDay);
+        const limitedNew = newCards.slice(0, remainingNewSlots);
+
+        // Learning always shows, then review, then new
+        return [...learningCards, ...limitedReview, ...limitedNew];
       },
 
       getCardsForDeck: (deckId) => {
