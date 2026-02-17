@@ -172,8 +172,10 @@ export function ImportExam({ deckId, onBack }: ImportExamProps) {
 
   const parseGyouseishosiData = (data: GyouseishosiQuestion[]): ParsedCard[] => {
     const cards: ParsedCard[] = [];
+    let skippedErrors = 0;
 
     for (const question of data) {
+      try {
       if (!question.choices || question.choices.length === 0) continue;
 
       // 記述式・多肢選択式は一問一答に向かないため完全スキップ
@@ -258,8 +260,14 @@ export function ImportExam({ deckId, onBack }: ImportExamProps) {
           });
         }
       }
+      } catch {
+        skippedErrors++;
+      }
     }
 
+    if (skippedErrors > 0) {
+      console.warn(`parseGyouseishosiData: ${skippedErrors} questions skipped due to errors`);
+    }
     return cards;
   };
 
@@ -382,7 +390,8 @@ export function ImportExam({ deckId, onBack }: ImportExamProps) {
 
       setPreview(parsedCards);
     } catch (error) {
-      setImportStatus(`エラー: ${error instanceof Error ? error.message : 'ファイルの読み込みに失敗しました'}`);
+      const msg = error instanceof Error ? error.message : String(error);
+      setImportStatus(`エラー: ${msg}`);
       setPreview([]);
     }
   };
