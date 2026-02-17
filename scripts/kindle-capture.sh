@@ -41,41 +41,6 @@ done
 
 mkdir -p "$OUTPUT_DIR"
 
-# --- Find Kindle window ID ---
-echo "Looking for Kindle window..."
-
-WINDOW_ID=$(osascript -e '
-tell application "System Events"
-  set kindleProc to first process whose name contains "Kindle"
-  set kindleWin to first window of kindleProc
-  return id of kindleWin
-end tell
-' 2>/dev/null || true)
-
-# If AppleScript id doesn't work, fall back to CGWindowListCopyWindowInfo
-if [[ -z "$WINDOW_ID" ]]; then
-  echo "Trying alternative window detection..."
-  # Activate Kindle first
-  osascript -e 'tell application "Kindle" to activate' 2>/dev/null || \
-  osascript -e 'tell application "Amazon Kindle" to activate' 2>/dev/null || true
-  sleep 1
-
-  # Use Python to query window list for Kindle
-  WINDOW_ID=$(python3 -c "
-import subprocess, json
-out = subprocess.check_output(
-    ['osascript', '-e',
-     'tell application \"System Events\" to get (name of every process whose visible is true)'])
-" 2>/dev/null || true)
-
-  # Last resort: capture full screen
-  if [[ -z "$WINDOW_ID" ]]; then
-    echo "WARNING: Could not detect Kindle window ID."
-    echo "Will capture the frontmost window. Make sure Kindle is in front."
-    USE_FRONTMOST=true
-  fi
-fi
-
 # --- Activate Kindle ---
 echo "Activating Kindle..."
 osascript -e 'tell application "Kindle" to activate' 2>/dev/null || \
@@ -92,14 +57,8 @@ for ((i = 0; i < PAGES; i++)); do
   FILENAME=$(printf "page_%03d.png" "$NUM")
   FILEPATH="$OUTPUT_DIR/$FILENAME"
 
-  if [[ "${USE_FRONTMOST:-}" == "true" ]]; then
-    # Capture the frontmost window
-    screencapture -o -w "$FILEPATH" 2>/dev/null || screencapture -x "$FILEPATH"
-  else
-    # Capture by window ID
-    screencapture -l "$WINDOW_ID" -o -x "$FILEPATH" 2>/dev/null || \
-    screencapture -o -x "$FILEPATH"
-  fi
+  # Capture full screen silently (Kindle should be frontmost and maximized)
+  screencapture -o -x "$FILEPATH"
 
   echo "  [$((i + 1))/$PAGES] $FILENAME"
 

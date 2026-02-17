@@ -28,12 +28,21 @@ export function calculateNextReview(
   easeFactor: number,
   interval: number
 ): ReviewResult {
-  // Again (quality < 3): 1 minute, reset to learning
-  if (quality < 3) {
+  // Again (quality 0-1): 1 minute, reset to step 0
+  if (quality < 2) {
     return {
       interval: 1 / MINUTES_PER_DAY,
       repetition: 0,
       easeFactor: Math.max(1.3, easeFactor - 0.2),
+    };
+  }
+
+  // Hard-fail (quality 2): 10 minutes, reset to step 1
+  if (quality === 2) {
+    return {
+      interval: 10 / MINUTES_PER_DAY,
+      repetition: 0,
+      easeFactor: Math.max(1.3, easeFactor - 0.1),
     };
   }
 

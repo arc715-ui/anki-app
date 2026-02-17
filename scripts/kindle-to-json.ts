@@ -242,7 +242,7 @@ async function extractBatch(
     try {
       const response = await client.messages.create({
         model,
-        max_tokens: 8192,
+        max_tokens: 16384,
         messages: [{ role: "user", content }],
       });
 
@@ -302,11 +302,11 @@ function deduplicateQuestions(questions: ShindanshiQuestion[]): ShindanshiQuesti
       const existingScore =
         (existing.explanation?.length ?? 0) +
         (existing.sub_category ? 10 : 0) +
-        Object.keys(existing.choices).length;
+        Object.keys(existing.choices ?? {}).length;
       const newScore =
         (q.explanation?.length ?? 0) +
         (q.sub_category ? 10 : 0) +
-        Object.keys(q.choices).length;
+        Object.keys(q.choices ?? {}).length;
 
       if (newScore > existingScore) {
         seen.set(key, q);
@@ -391,7 +391,7 @@ async function main() {
       console.warn(`  WARNING: ${q.year} 第${q.question_number}問 — missing correct_answer`);
       warnings++;
     }
-    if (Object.keys(q.choices).length < 2) {
+    if (!q.choices || Object.keys(q.choices).length < 2) {
       console.warn(`  WARNING: ${q.year} 第${q.question_number}問 — fewer than 2 choices`);
       warnings++;
     }

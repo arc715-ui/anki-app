@@ -303,9 +303,9 @@ export function StudySession({ deckId, onComplete, onBack, smartQueue }: StudySe
             <span>もう一度</span>
             <span className="rating-btn__days">{getIntervalText(1)}</span>
           </button>
-          <button className="rating-btn rating-btn--hard" onClick={() => handleRate(3)}>
+          <button className="rating-btn rating-btn--hard" onClick={() => handleRate(2 as Quality)}>
             <span>難しかった</span>
-            <span className="rating-btn__days">{getIntervalText(3)}</span>
+            <span className="rating-btn__days">{getIntervalText(2 as Quality)}</span>
           </button>
         </>
       )}
