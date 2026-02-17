@@ -338,17 +338,23 @@ export function ImportExam({ deckId, onBack }: ImportExamProps) {
   };
 
   const handleFileSelect = async (event: React.ChangeEvent<HTMLInputElement>) => {
-    const file = event.target.files?.[0];
-    if (!file) return;
+    const files = event.target.files;
+    if (!files || files.length === 0) return;
 
-    setFileName(file.name);
+    const fileNames = Array.from(files).map(f => f.name);
+    setFileName(fileNames.length === 1 ? fileNames[0] : `${fileNames.length}ファイル選択中`);
     setImportStatus('読み込み中...');
 
     try {
-      const text = await file.text();
-      const data = JSON.parse(text) as unknown[];
+      // 全ファイルを読み込んでマージ
+      let allData: unknown[] = [];
+      for (const file of Array.from(files)) {
+        const text = await file.text();
+        const data = JSON.parse(text) as unknown[];
+        allData = allData.concat(data);
+      }
 
-      const detectedType = examType === 'auto' ? detectExamType(data) : examType;
+      const detectedType = examType === 'auto' ? detectExamType(allData) : examType;
 
       if (detectedType === 'auto') {
         setImportStatus('エラー: ファイル形式を判別できません');
@@ -357,17 +363,17 @@ export function ImportExam({ deckId, onBack }: ImportExamProps) {
 
       let parsedCards: ParsedCard[];
       if (detectedType === 'sharoushi') {
-        parsedCards = parseSharoushiData(data as SharoushiQuestion[]);
-        setImportStatus(`社労士試験形式: ${parsedCards.length}問を検出しました`);
+        parsedCards = parseSharoushiData(allData as SharoushiQuestion[]);
+        setImportStatus(`社労士試験形式: ${parsedCards.length}問を検出しました（${files.length}ファイル）`);
       } else if (detectedType === 'consultant') {
-        parsedCards = parseConsultantData(data as ConsultantQuestion[]);
-        setImportStatus(`コンサルタント試験形式: ${parsedCards.length}問を検出しました`);
+        parsedCards = parseConsultantData(allData as ConsultantQuestion[]);
+        setImportStatus(`コンサルタント試験形式: ${parsedCards.length}問を検出しました（${files.length}ファイル）`);
       } else if (detectedType === 'shindanshi') {
-        parsedCards = parseShindanshiData(data as ShindanshiQuestion[]);
-        setImportStatus(`中小企業診断士試験形式: ${parsedCards.length}問を検出しました`);
+        parsedCards = parseShindanshiData(allData as ShindanshiQuestion[]);
+        setImportStatus(`中小企業診断士試験形式: ${parsedCards.length}問を検出しました（${files.length}ファイル）`);
       } else {
-        parsedCards = parseGyouseishosiData(data as GyouseishosiQuestion[]);
-        setImportStatus(`行政書士試験形式: ${parsedCards.length}問を検出しました`);
+        parsedCards = parseGyouseishosiData(allData as GyouseishosiQuestion[]);
+        setImportStatus(`行政書士試験形式: ${parsedCards.length}問を検出しました（${files.length}ファイル）`);
       }
 
       setPreview(parsedCards);
@@ -441,6 +447,7 @@ export function ImportExam({ deckId, onBack }: ImportExamProps) {
               ref={fileInputRef}
               type="file"
               accept=".json"
+              multiple
               onChange={handleFileSelect}
               className="import-exam__file"
             />
