@@ -300,11 +300,13 @@ export function ImportExam({ deckId, onBack }: ImportExamProps) {
     const cards: ParsedCard[] = [];
 
     for (const question of data) {
+      if (!question.choices || Object.keys(question.choices).length < 2) continue;
+
       const year = typeof question.year === 'number' ? `${question.year}年` : question.year;
       const qNum = typeof question.question_number === 'number' ? `問${question.question_number}` : question.question_number;
 
       // 解説を選択肢別に分割を試みる
-      const { prefix, perChoice } = splitConsultantExplanation(question.explanation);
+      const { prefix, perChoice } = splitConsultantExplanation(question.explanation || '');
       const hasPerChoiceExp = Object.keys(perChoice).length > 0;
 
       const choiceEntries = Object.entries(question.choices);
