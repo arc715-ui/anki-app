@@ -265,9 +265,10 @@ export function ImportExam({ deckId, onBack }: ImportExamProps) {
     for (const question of data) {
       // 記述式・穴埋め式はスキップ
       if (question.question_type === '記述式' || question.question_type === '穴埋め') continue;
+      if (!question.choices || Object.keys(question.choices).length < 2) continue;
 
       // 解説を選択肢別に分割
-      const { prefix, perChoice } = splitConsultantExplanation(question.explanation);
+      const { prefix, perChoice } = splitConsultantExplanation(question.explanation || '');
       const hasPerChoiceExp = Object.keys(perChoice).length > 0;
 
       const choiceEntries = Object.entries(question.choices);
