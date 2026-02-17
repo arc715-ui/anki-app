@@ -174,16 +174,20 @@ export function ImportExam({ deckId, onBack }: ImportExamProps) {
     const cards: ParsedCard[] = [];
 
     for (const question of data) {
+      if (!question.choices || question.choices.length === 0) continue;
+
       // 記述式・多肢選択式は一問一答に向かないため完全スキップ
       const shouldSkip = /記述式|多肢選択/.test(question.subject || '') || /記述式|多肢選択/.test(question.sub_category || '');
       if (shouldSkip) {
         continue;
       }
 
+      const exp = question.explanation || '';
+
       if (isComboQuestion(question)) {
         // ===== 組合せ問題: ア～オの個別記述を一問一答化 =====
         const statements = extractKanaStatements(question.question_text);
-        const explanations = splitByKanaMarkers(question.explanation);
+        const explanations = splitByKanaMarkers(exp);
 
         // 問題文からア～オ部分を除いた前文（共通の問い）
         const firstKanaIdx = question.question_text.search(
@@ -195,7 +199,7 @@ export function ImportExam({ deckId, onBack }: ImportExamProps) {
 
         for (const [kana, statement] of Object.entries(statements)) {
           const expData = explanations[kana];
-          const explanation = expData?.explanation || question.explanation;
+          const explanation = expData?.explanation || exp;
           const isCorrect = expData?.isCorrect;
 
           const front = `【${question.year} ${question.question_number}-${kana}】[${question.subject}${question.sub_category ? ` - ${question.sub_category}` : ''}]\n\n${commonPrefix ? commonPrefix + '\n\n' : ''}▼ ${kana}\n${statement}`;
@@ -212,20 +216,20 @@ export function ImportExam({ deckId, onBack }: ImportExamProps) {
       } else {
         // ===== 通常問題: 各選択肢を一問一答化（解説も分割を試みる） =====
         // まずカタカナ分割を試行、失敗なら番号+読点パターン、さらにコンサル形式を試行
-        const kanaExplanations = splitByKanaMarkers(question.explanation);
+        const kanaExplanations = splitByKanaMarkers(exp);
         const hasKanaExp = Object.keys(kanaExplanations).length > 0;
 
-        const numberedExp = !hasKanaExp ? splitByJapaneseNumbered(question.explanation) : null;
+        const numberedExp = !hasKanaExp ? splitByJapaneseNumbered(exp) : null;
         const hasNumberedExp = numberedExp ? Object.keys(numberedExp.perChoice).length > 0 : false;
 
-        const consultantExp = !hasKanaExp && !hasNumberedExp ? splitConsultantExplanation(question.explanation) : null;
+        const consultantExp = !hasKanaExp && !hasNumberedExp ? splitConsultantExplanation(exp) : null;
         const hasConsultantExp = consultantExp ? Object.keys(consultantExp.perChoice).length > 0 : false;
 
         for (const choice of question.choices) {
           const isCorrect = choice.number.toString() === question.correct_answer;
           const front = `【${question.year} ${question.question_number}-${choice.number}】[${question.subject}${question.sub_category ? ` - ${question.sub_category}` : ''}]\n\n${question.question_text}\n\n▼ 選択肢 ${choice.number}\n${choice.text}`;
 
-          let back = question.explanation;
+          let back = exp;
           const choiceKey = choice.number.toString();
 
           if (hasKanaExp) {
